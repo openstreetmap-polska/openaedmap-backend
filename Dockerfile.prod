@@ -1,0 +1,34 @@
+FROM python:3.10
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+
+# Create user (app) to avoid using root
+RUN mkdir -p /home/app
+RUN groupadd -r app && useradd -r -g app -d /home/app -s /sbin/nologin app
+
+ENV HOME=/home/app
+ENV APP_HOME=/home/app/backend
+RUN mkdir $APP_HOME
+
+WORKDIR $APP_HOME
+
+# Install dependencies
+COPY requirements.txt $APP_HOME
+RUN pip install -r requirements.txt --quiet
+
+# Copy project
+COPY backend/ $APP_HOME/backend/
+
+# Copy migration files (alembic)
+COPY migrations/ $APP_HOME/migrations/
+COPY alembic.ini $APP_HOME/.
+
+# Copy entrypoint
+# Copy entrypoint
+COPY docker-entrypoint.sh $APP_HOME
+
+RUN chown -R app:app $APP_HOME
+USER app
+
+EXPOSE 8000
+ENTRYPOINT ["./docker-entrypoint.sh"]
