@@ -9,6 +9,7 @@ class OsmNodesBase(BaseModel):
     version: int
     creator_id: Optional[int]
     added_in_changeset: Optional[int]
+    country_code: Optional[str]
     geometry: WKTElement
     tags: Dict[str, str]
 
