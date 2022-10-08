@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 
-from backend.api.v1 import buildings
+from backend.api.v1 import osm_nodes
 
 
 api_router = APIRouter()
 api_router.include_router(
-    buildings.router,
-    prefix='/buildings',
-    tags=['buildings']
+    osm_nodes.router,
+    prefix='',
+    tags=['osm']
 )
