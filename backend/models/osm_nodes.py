@@ -19,7 +19,7 @@ class OsmNodes(Base):
     creator_id = Column(Integer, nullable=True)
     added_in_changeset = Column(Integer, nullable=True)
     country_code = Column(
-        String(2), ForeignKey('countries.country_code'), nullable=True, indexed=True,
+        String(2), ForeignKey('countries.country_code'), nullable=True, index=True,
         doc='2 letter language code ISO 639-1'
     )
     geometry = Column(Geometry(geometry_type='POINT', srid=4326, spatial_index=True), nullable=False)
