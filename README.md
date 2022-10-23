@@ -17,6 +17,8 @@ Functionality:
 docker-compose -f docker-compose-dev.yml -p dev up
 ```
 
+Go to: http://localhost:8080/docs
+
 ### Run production
 ```
 PORT=80 docker-compose -f docker-compose-prod.yml -p prod up -d
@@ -24,7 +26,18 @@ PORT=80 docker-compose -f docker-compose-prod.yml -p prod up -d
 
 ### Migrations
 
-After changing models run:
+After changing models
+connect to container:
+```
+docker exec dev_backend_1 -it bash
+```
+and run:
 ```
 alembic revision --autogenerate -m "model changed"
 ```
+
+If the file is created as root then change owner to your user and chmod 664.
+
+### Dependencies
+
+If you change dependencies in `requirements.txt` then you need to run docker-compose command with `--build` flag.
