@@ -10,7 +10,7 @@ class OsmNodesBase(BaseModel):
     creator_id: Optional[int]
     added_in_changeset: Optional[int]
     country_code: Optional[str]
-    geometry: WKTElement
+    geometry: str
     tags: Dict[str, str]
 
     @validator('geometry', pre=True)

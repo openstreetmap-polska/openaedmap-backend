@@ -15,5 +15,8 @@ class Countries(Base):
     __table_args__ = ()
     country_code = Column(String(length=2), primary_key=True, doc='2 letter language code ISO 639-1')
     feature_count = Column(Integer, default=0, nullable=False)
-    geometry = Column(Geometry(geometry_type='MULTIPOLYGON', srid=4326, spatial_index=True), nullable=False)
+    geometry = Column(
+        Geometry(geometry_type='GEOMETRY', srid=4326, spatial_index=True), nullable=False,
+        doc='(MULTI)POLYGON'
+    )
     country_names = Column(JSONB, nullable=False)
