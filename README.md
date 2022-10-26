@@ -14,7 +14,7 @@ Functionality:
 
 ### Run development
 ```
-docker-compose -f docker-compose-dev.yml -p dev up
+docker-compose -f docker-compose-dev.yml -p dev up --build
 ```
 
 Go to: http://localhost:8080/docs
