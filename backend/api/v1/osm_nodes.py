@@ -32,10 +32,15 @@ async def osm_node(node_id: int, db: Session = Depends(get_db)) -> Response:
                 {
                     "type": "node",
                     "id": node_data.node_id,
-                    "lat": func.ST_Y(node_data.geometry),
-                    "lon": func.ST_X(node_data.geometry),
+                    "lat": db.scalar(func.ST_Y(node_data.geometry)),
+                    "lon": db.scalar(func.ST_X(node_data.geometry)),
+                    "timestamp": None,
                     "version": node_data.version,
+                    "changeset": None,
+                    "user": None,
+                    "uid": None,
+                    "tags": node_data.tags,
                 }
             ]
         }
-        return Response(content=response_data)
+        return response_data
