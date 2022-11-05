@@ -1,4 +1,5 @@
 import gzip
+import json
 import logging
 import urllib.parse
 import xml.dom.pulldom
@@ -24,6 +25,14 @@ out meta qt;
 REPLICATION_MINUTE_URL = "https://planet.osm.org/replication/minute/"
 
 
+def make_sure_val_is_simple(value: int | float | str | dict) -> int | float | str:
+    match value:
+        case dict():
+            return json.dumps(value)
+        case _:
+            return value
+
+
 @dataclass(frozen=True)
 class ReplicationSequence:
     timestamp: datetime
@@ -42,11 +51,21 @@ class Node:
     longitude: float
     tags: Dict[str, str]
 
+    def as_params_dict(self) -> dict:
+        return {k: make_sure_val_is_simple(v) for k, v in self.__dict__.items()}
+
 
 @dataclass(frozen=True)
 class Change:
     type: str
     element: Node
+
+    def as_params_dict(self) -> dict:
+        node = {k: make_sure_val_is_simple(v) for k, v in self.element.__dict__.items()}
+        return {
+            "type": self.type,
+            **node
+        }
 
 
 def full_list_from_overpass(
@@ -185,15 +204,18 @@ def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
     logger.info(f"Finished parsing file downloaded from: {url} . There were {counter} nodes.")
 
 
-def changes_since_seq(
-    sequence: str | int,
+def changes_between_seq(
+    start_sequence: str | int,
+    end_sequence: str | int,
     replication_url: str = REPLICATION_MINUTE_URL
 ) -> Generator[Change, None, None]:
     """Download and parse all changes since provided sequence number. Yields Nodes."""
 
-    if type(sequence) == str:
-        sequence = replication_sequence_to_int(sequence)
-    newest = find_newest_replication_sequence()
-    for seq in range(sequence, newest.number + 1):
+    if type(start_sequence) == str:
+        start_sequence = replication_sequence_to_int(start_sequence)
+    if type(end_sequence) == str:
+        end_sequence = replication_sequence_to_int(end_sequence)
+
+    for seq in range(start_sequence, end_sequence + 1):
         osc_url = urllib.parse.urljoin(replication_url, f"{format_replication_sequence(seq)}.osc.gz")
         yield download_and_parse_change_file(osc_url)
