@@ -117,7 +117,7 @@ def get_replication_sequence(url: str) -> ReplicationSequence:
     logger.info(f"Sending request to: {url}")
     response = requests.get(url)
     response.raise_for_status()
-    logger.info(f"Request to: {url} was successful, response: {response.text}")
+    logger.info(f"Request to: {url} was successful, response:\n{response.text}")
     data = response.text.splitlines()
     seq = data[1].split("=")[1]
     ts = data[2].split("=")[1]
@@ -198,7 +198,7 @@ def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
             event_stream.expandNode(element)
             for child in element.childNodes:
                 child: Element = child  # for typing
-                if child.tagName == "node":
+                if type(child) == Element and child.tagName == "node":
                     counter += 1
                     yield Change(type=element.tagName, element=xml_to_node(child))
     logger.info(f"Finished parsing file downloaded from: {url} . There were {counter} nodes.")
@@ -218,4 +218,5 @@ def changes_between_seq(
 
     for seq in range(start_sequence, end_sequence + 1):
         osc_url = urllib.parse.urljoin(replication_url, f"{format_replication_sequence(seq)}.osc.gz")
-        yield download_and_parse_change_file(osc_url)
+        for change in download_and_parse_change_file(osc_url):
+            yield change
