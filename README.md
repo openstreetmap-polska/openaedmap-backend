@@ -2,7 +2,7 @@
 
 development in progress - this code is not working yet
 
-This project contains backend for [openaedmap.org](openaedmap.org)
+This project contains backend for [openaedmap.org](openaedmap.org) , [frontend-repo](https://github.com/openstreetmap-polska/openaedmap-frontend)
 
 Functionality:
 - download data and updates from OSM
@@ -11,6 +11,16 @@ Functionality:
 - generate files with data for download (including split per country)
 
 ## Local Development
+
+### Example `.env` file
+Create `.env` file in root dir
+```
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_DB=db
+POSTGRES_USER=test
+POSTGRES_PASSWORD=test123
+```
 
 ### Run development
 ```
