@@ -188,9 +188,9 @@ def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
     response = requests.get(url)
     response.raise_for_status()
     logger.info(f"Downloaded file from: {url} . Decompressing...")
-    xml_data = gzip.decompress(response.content)
-    logger.info("Decompressed. Parsing XML...")
-    event_stream = xml.dom.pulldom.parse(BytesIO(xml_data))
+    xml_data = gzip.GzipFile(fileobj=BytesIO(response.content))
+    logger.info("Parsing XML...")
+    event_stream = xml.dom.pulldom.parse(xml_data)
     counter = 0
     for event, element in event_stream:
         element: Element = element  # just for typing
