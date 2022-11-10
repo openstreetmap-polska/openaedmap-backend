@@ -11,6 +11,9 @@ from typing import Dict, Generator, Optional
 from xml.dom.minidom import Element
 
 import requests
+from requests import Response
+
+from backend.utils import print_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,16 @@ class Change:
         }
 
 
+@print_runtime(logger)
+def send_request(url: str) -> Response:
+    logger.info(f"Sending request to: {url}")
+    response = requests.get(url)
+    response.raise_for_status()
+    logger.info(f"Response from: {url} successful, code: {response.status_code}.")
+    return response
+
+
+@print_runtime(logger)
 def full_list_from_overpass(
     api_url: str = OVERPASS_URL,
     api_query: str = OVERPASS_QUERY
@@ -114,10 +127,7 @@ def replication_sequence_to_int(sequence: str) -> int:
 def get_replication_sequence(url: str) -> ReplicationSequence:
     """Helper method that downloads state file from given url and parses out sequence number and timestamp."""
 
-    logger.info(f"Sending request to: {url}")
-    response = requests.get(url)
-    response.raise_for_status()
-    logger.info(f"Request to: {url} was successful, response:\n{response.text}")
+    response = send_request(url)
     data = response.text.splitlines()
     seq = data[1].split("=")[1]
     ts = data[2].split("=")[1]
@@ -184,10 +194,8 @@ def xml_to_node(xml_element: Element) -> Node:
 def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
     """Downloads OSC file from URL and parses out Nodes."""
 
-    logger.info(f"Sending request to: {url}")
-    response = requests.get(url)
-    response.raise_for_status()
-    logger.info(f"Downloaded file from: {url} . Decompressing...")
+    response = send_request(url)
+    logger.info("Decompressing...")
     xml_data = gzip.GzipFile(fileobj=BytesIO(response.content))
     logger.info("Parsing XML...")
     event_stream = xml.dom.pulldom.parse(xml_data)
