@@ -22,7 +22,11 @@ async def metadata(db: Session = Depends(get_db)) -> List[CountryInfo]:
 
 @router.get('/countries.geojson')
 async def metadata(country_code: Optional[str] = None, db: Session = Depends(get_db)) -> dict:
-    return get_countries_geojson(country_code, db)
+    result = get_countries_geojson(country_code, db)
+    if result:
+        return result
+    else:
+        Response(status_code=404)
 
 
 @router.get('/countries/names')
