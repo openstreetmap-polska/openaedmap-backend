@@ -1,6 +1,6 @@
 # OpenAedMap - backend
 
-development in progress - this code is not working yet
+development in progress - some stuff works but api is not stable, expect major changes
 
 This project contains backend for [openaedmap.org](openaedmap.org) , [frontend-repo](https://github.com/openstreetmap-polska/openaedmap-frontend)
 
@@ -44,7 +44,7 @@ docker exec -it dev_db_1 psql -h localhost -U <user from .env> -d <db from .env>
 After changing models
 connect to container:
 ```
-docker exec dev_backend_1 -it bash
+docker exec -it dev_backend_1 bash
 ```
 and run:
 ```
