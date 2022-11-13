@@ -39,9 +39,10 @@ def parse_feature(feature: Feature) -> Optional[Country]:
     wkt_geometry: str = geometry.shape(feature.geometry).wkt
     country_names: Dict[str, str] = {}
     for k, v in feature.properties.items():
-        if k.startswith('NAME_') and k != "NAME_SORT":
+        if k.startswith('NAME_'):
             language_code = k.split('_')[1]
-            country_names[language_code] = v
+            if len(language_code) == 2:
+                country_names[language_code] = v
         elif k == 'NAME':
             country_names['default'] = v
     return Country(country_code=country_code, geometry=wkt_geometry, country_names=country_names)
