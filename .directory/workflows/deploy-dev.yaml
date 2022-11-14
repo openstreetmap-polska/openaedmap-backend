@@ -1,0 +1,27 @@
+name: deploy-dev
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    name: Deploy dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH Key
+        uses: kielabokkie/ssh-key-and-known-hosts-action@v1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-host: ${{ secrets.SSH_HOST_IP }}
+          ssh-port: ${{ secrets.SSH_HOST_PORT }}
+      - name: Run deploy script on host
+        run: |
+          ssh -t -p ${{ secrets.SSH_HOST_PORT }} -l ${{ secrets.SSH_USER }} ${{ secrets.SSH_HOST_IP }} << EOF
+            set -e
+            cd /home/${{ secrets.SSH_USER }}/dev/
+            git fetch
+            git checkout origin/dev
+            PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
+          EOF
