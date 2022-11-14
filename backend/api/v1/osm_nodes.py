@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, Path
 from geoalchemy2 import func
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,10 @@ router = APIRouter()
 
 
 @router.get('/node/{node_id}')
-async def osm_node(node_id: int, db: Session = Depends(get_db)) -> Response:
+async def osm_node(
+    node_id: int = Path(description="Id of OSM Node", gt=0),
+    db: Session = Depends(get_db),
+) -> Response:
     request_receive_dt = datetime.utcnow()
 
     node_data: OsmNodes | None = db.get(entity=OsmNodes, ident=node_id)
