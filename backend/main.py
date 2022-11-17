@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi_utils.tasks import repeat_every
 from fastapi import FastAPI
 from fastapi.logger import logger as fastapi_logger
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from backend.api.v1.api import api_router
@@ -41,6 +42,14 @@ else:
 
 this_file_path = Path(__file__).absolute()
 
+allowed_origins = [
+    "https://openaedmap.org",
+    "https://www.openaedmap.org",
+    "https://dev.openaedmap.org",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app = FastAPI(
     title="Open AED Map - backend",
     description="API for [openaedmap.org](openaedmap.org)",
@@ -54,6 +63,13 @@ app = FastAPI(
     },
 )
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    max_age=int(timedelta(days=1).total_seconds()),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
