@@ -41,7 +41,18 @@ else:
 
 this_file_path = Path(__file__).absolute()
 
-app = FastAPI()
+app = FastAPI(
+    title="Open AED Map - backend",
+    description="API for [openaedmap.org](openaedmap.org)",
+    license_info={
+        "name": "ODbL",
+        "url": "https://www.openstreetmap.org/copyright",
+    },
+    contact={
+        "name": "OpenStreetMap Polska",
+        "url": "https://github.com/openstreetmap-polska/openaedmap-backend",
+    },
+)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
