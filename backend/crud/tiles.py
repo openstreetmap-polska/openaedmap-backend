@@ -5,7 +5,7 @@ def get_vector_tile(z: int, x: int, y: int, db: Session) -> bytes:
     base = 150
 
     match z:
-        case 5:
+        case z if z <= 5:
             return vector_tile_by_country(z, x, y, db)
         case 6:
             return vector_tile_clustered(z, x, y, base * 2 ** 7, db)
