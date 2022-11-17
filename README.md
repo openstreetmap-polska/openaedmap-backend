@@ -10,6 +10,10 @@ Functionality:
 - create and serve vector tiles
 - generate files with data for download (including split per country)
 
+Prod (main branch): https://openaedmap.openstreetmap.org.pl/docs
+
+Dev (dev branch): https://openaedmap-dev.openstreetmap.org.pl/docs
+
 ## Local Development
 
 ### Example `.env` file
