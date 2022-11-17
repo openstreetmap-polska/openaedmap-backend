@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get('/tile/{z}/{x}/{y}.mvt')
 async def vector_tile(
-    z: int = Path(description="Zoom level", ge=5, le=13),
+    z: int = Path(description="Zoom level", ge=0, le=13),
     x: int = Path(description="X in XYZ tile scheme"),
     y: int = Path(description="Y in XYZ tile scheme"),
     db: Session = Depends(get_db)
