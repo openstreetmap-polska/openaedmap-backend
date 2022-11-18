@@ -19,7 +19,7 @@ async def vector_tile(
     """Get single vector tile.
     Usually you provide template to map library like https://host/tile/{z}/{x}/{y}.mvt and it figures out the rest."""
 
-    max_age = timedelta(minutes=(14 - z))
+    max_age = timedelta(minutes=(3 * (14 - z)))
 
     return Response(
         status_code=200,
