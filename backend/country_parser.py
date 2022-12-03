@@ -20,6 +20,7 @@ class Feature:
 @dataclass(frozen=True, kw_only=True)
 class Country:
     country_code: str
+    label_point: str
     geometry: str
     country_names: Dict[str, str]
 
@@ -33,10 +34,15 @@ def parse_feature(feature: Feature) -> Optional[Country]:
     if country_code == "-99":
         if feature.properties["NAME"] == "Israel":
             country_code = "IL"
+        elif feature.properties["NAME"] == "United Kingdom":
+            country_code = "GB"
         else:
             logger.warning(f"Missing ISO Code for feature: {feature.properties}")
             return None
     wkt_geometry: str = geometry.shape(feature.geometry).wkt
+    label_point: str = geometry.shape({
+        "type": "Point", "coordinates": [feature.properties.get("LABEL_X"), feature.properties.get("LABEL_Y")]
+    }).wkt
     country_names: Dict[str, str] = {}
     for k, v in feature.properties.items():
         if k.startswith('NAME_'):
@@ -45,7 +51,7 @@ def parse_feature(feature: Feature) -> Optional[Country]:
                 country_names[language_code] = v
         elif k == 'NAME':
             country_names['default'] = v
-    return Country(country_code=country_code, geometry=wkt_geometry, country_names=country_names)
+    return Country(country_code=country_code, geometry=wkt_geometry, country_names=country_names, label_point=label_point)
 
 
 def parse_countries(data_url: str | Path = DATA_URL) -> Generator[Country, None, None]:

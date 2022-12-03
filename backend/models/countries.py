@@ -1,23 +1,12 @@
 from geoalchemy2 import Geometry
-from geoalchemy2 import func
 from sqlalchemy import (
     Column,
     Integer,
     String,
-    select,
-    column,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from backend.database.base import Base
-
-
-def find_label_point(context):
-    geom = context.get_current_parameters()['geometry']
-    max_inscribed_circle = func.ST_MaximumInscribedCircle(geom)
-    return context.connection.scalar(
-        select(column('center')).select_from(max_inscribed_circle)
-    )
 
 
 class Countries(Base):
@@ -34,5 +23,4 @@ class Countries(Base):
     label_point = Column(
         Geometry(geometry_type='POINT', srid=4326, spatial_index=False),
         nullable=False,
-        default=find_label_point,
     )
