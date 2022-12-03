@@ -5,6 +5,7 @@ from geoalchemy2 import WKTElement
 class CountriesBase(BaseModel):
     country_code: str
     feature_count: int = 0
+    label_point: str
     geometry: str
     country_names: dict
 
