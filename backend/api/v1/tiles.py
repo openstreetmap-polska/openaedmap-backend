@@ -26,6 +26,6 @@ async def vector_tile(
         media_type="application/vnd.mapbox-vector-tile",
         content=get_vector_tile(z, x, y, db),
         headers={
-            "Cache-Control": f"max-age={int(max_age.total_seconds())}",
+            # "Cache-Control": f"max-age={int(max_age.total_seconds())}",
         }
     )

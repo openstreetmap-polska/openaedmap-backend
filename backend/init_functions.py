@@ -5,9 +5,10 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from backend.country_parser import parse_countries
-from backend.models import Countries, OsmNodes
+from backend.models import Countries, OsmNodes, Tiles
 from backend.osm_loader import (
-    full_list_from_overpass, estimated_replication_sequence,
+    full_list_from_overpass,
+    estimated_replication_sequence,
 )
 from backend.schemas.countries import CountriesCreate
 
@@ -113,3 +114,30 @@ def load_osm_nodes_if_db_empty(db: Session) -> None:
         logger.info(f"Load took: {round(process_end - process_start, 4)} seconds")
     else:
         logger.info("Table with osm nodes is not empty. Skipping full load.")
+
+def create_all_tiles(db: Session) -> None:
+    min_zoom = 0
+    max_zoom = 13
+    query= """
+    with
+        zxy as (
+            select :zoom as z, x, y from generate_series(0, (2^:zoom-1)::int) as x, generate_series(0, (2^:zoom-1)::int) as y
+        )
+        insert into tiles
+            select z, x, y, mvt(z, x, y) from zxy
+        on conflict (z, x, y) do update set mvt = excluded.mvt
+    """
+    def run_level(zoom: int) -> None:
+        logger.info(f"Creating all tiles for zoom: {zoom}")
+        process_start = time.perf_counter()
+        db.execute(query, params={"zoom": zoom})
+        db.commit()
+        process_end = time.perf_counter()
+        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_end - process_start, 4)} seconds")
+
+    if db.query(Tiles).first() is None:
+        logger.info("Table tiles empty.")
+        for z in range(min_zoom, max_zoom + 1):
+            run_level(z)
+    else:
+        logger.info("Table tiles contains rows. Skipping full reload of tiles.")

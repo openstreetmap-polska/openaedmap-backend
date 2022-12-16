@@ -1,8 +1,10 @@
+import datetime
 import logging
 import os
 import time
 from datetime import timedelta
 from pathlib import Path
+from typing import Dict
 
 from fastapi import FastAPI
 from fastapi.logger import logger as fastapi_logger
@@ -13,13 +15,12 @@ from sqlalchemy.orm import Session
 from backend.api.v1.api import api_router
 from backend.core.config import settings
 from backend.database.session import SessionLocal
-from backend.init_functions import init_countries, load_osm_nodes_if_db_empty
+from backend.init_functions import init_countries, load_osm_nodes_if_db_empty, create_all_tiles
 from backend.models import Metadata
 from backend.osm_loader import (
     changes_between_seq,
     find_newest_replication_sequence,
 )
-
 
 init_logger = logging.getLogger("init_logger")
 cron_logger = logging.getLogger("cron_logger")
@@ -79,10 +80,12 @@ async def startup_event():
     init_logger.info("Running functions tied to server startup...")
     db: Session = SessionLocal()
     init_countries(db)
-    # load_osm_nodes_if_db_empty(db)
+    load_osm_nodes_if_db_empty(db)
+    create_all_tiles(db)
     db.close()
     # start functions that will run periodically
-    # await load_changes()
+    await load_changes()
+    await process_expired_tiles_queue()
     init_logger.info("Server finished startup procedure.")
 
 
@@ -250,6 +253,18 @@ def load_changes() -> None:
         FROM country_code_counts
         WHERE countries.country_code = country_code_counts.country_code
         RETURNING 1
+    ),
+    insert_expired_tiles_to_queue as (
+        INSERT INTO tiles_queue(z, x, y, inserted_at)
+            SELECT DISTINCT z, x, y, CURRENT_TIMESTAMP
+            FROM tiles
+            JOIN (
+                SELECT ST_Transform(geometry, 3857) geometry
+                FROM osm_nodes
+                JOIN all_node_ids USING (node_id)
+            ) as nodes ON ST_Intersects(nodes.geometry, ST_TileEnvelope(tiles.z, tiles.x, tiles.y))
+        ON CONFLICT DO NOTHING
+        RETURNING z, x, y
     )
     SELECT
         (SELECT COUNT(*) FROM created_defibrillators) as osm_created_defibrillators,
@@ -262,7 +277,8 @@ def load_changes() -> None:
         (SELECT COUNT(*) FROM insert_defibrillators) as db_created_defibrillators,
         (SELECT COUNT(*) FROM update_defibrillators) as db_modified_defibrillators,
         (SELECT COUNT(*) FROM delete_defibrillators) as db_removed_defibrillators,
-        (SELECT COUNT(*) FROM update_countries) as db_updated_countries
+        (SELECT COUNT(*) FROM update_countries) as db_updated_countries,
+        (SELECT COUNT(*) FROM insert_expired_tiles_to_queue) as expired_tiles_added_to_queue
     """)
     for k, v in zip(result.keys(), result.first() or []):
         cron_logger.info(f"Load result - {k}: {v}")
@@ -279,3 +295,55 @@ def load_changes() -> None:
     db.close()
     process_end = time.perf_counter()
     cron_logger.info(f"Update took: {round(process_end - process_start, 4)} seconds")
+
+@repeat_every(seconds=60, wait_first=True, logger=cron_logger)
+def process_expired_tiles_queue() -> None:
+    min_zoom = 0
+    max_zoom = 13
+    refresh_interval: Dict[int, datetime.timedelta] = {
+        0: datetime.timedelta(hours=24),
+        1: datetime.timedelta(hours=12),
+        2: datetime.timedelta(hours=6),
+        3: datetime.timedelta(hours=1),
+        4: datetime.timedelta(hours=1),
+        5: datetime.timedelta(hours=1),
+        6: datetime.timedelta(minutes=30),
+        7: datetime.timedelta(minutes=30),
+        8: datetime.timedelta(minutes=30),
+        9: datetime.timedelta(minutes=15),
+        10: datetime.timedelta(minutes=5),
+        11: datetime.timedelta(minutes=3),
+        12: datetime.timedelta(minutes=2),
+        13: datetime.timedelta(minutes=0),
+    }
+    query = """
+        WITH
+        tiles_to_update as (
+            DELETE FROM tiles_queue
+            WHERE z = :zoom AND inserted_at < :older_than
+            RETURNING z, x, y
+        ),
+        updated_tiles as (
+            UPDATE tiles t
+            SET mvt = mvt(u.z, u.x, u.y)
+            FROM tiles_to_update as u
+            WHERE t.z=u.z AND t.x=u.x AND t.y=u.y
+            RETURNING t.z, t.x, t.y
+        )
+        SELECT COUNT(*) number_of_updated_tiles FROM updated_tiles
+    """
+    def run_level(zoom: int, older_than: datetime.datetime) -> None:
+        result = db.execute(query, params={"zoom": zoom, "older_than": older_than})
+        result = result.first()
+        for k, v in zip(result.keys(), result):
+            cron_logger.info(f"Results (zoom: {zoom}) - {k}: {v}")
+        db.commit()
+    cron_logger.info("Processing expired tiles queue...")
+    process_start = time.perf_counter()
+    db: Session = SessionLocal()
+    for z in range(min_zoom, max_zoom + 1):
+        ts = datetime.datetime.utcnow() - refresh_interval[z]
+        run_level(zoom=z, older_than=ts)
+    db.close()
+    process_end = time.perf_counter()
+    cron_logger.info(f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds")
