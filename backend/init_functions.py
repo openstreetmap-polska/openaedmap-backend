@@ -138,8 +138,10 @@ def create_all_tiles(db: Session) -> None:
         num_tiles_processed = result[0] if result else 0
         db.commit()
         process_end = time.perf_counter()
-        tiles_per_s = num_tiles_processed / (process_end - process_start)
-        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_end - process_start, 4)} seconds. {round(tiles_per_s, 1)} tiles/s")
+        process_time = process_end - process_start  # in seconds
+        tiles_per_s = num_tiles_processed / process_time
+        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_time, 4)} seconds. "
+                    f"{num_tiles_processed} tiles at {round(tiles_per_s, 1)} tiles/s")
 
     if db.query(Tiles).first() is None:
         logger.info("Table tiles empty.")
