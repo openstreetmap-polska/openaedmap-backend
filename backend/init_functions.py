@@ -119,21 +119,27 @@ def create_all_tiles(db: Session) -> None:
     min_zoom = 0
     max_zoom = 13
     query= """
-    with
+    WITH
         zxy as (
-            select :zoom as z, x, y from generate_series(0, (2^:zoom-1)::int) as x, generate_series(0, (2^:zoom-1)::int) as y
+            SELECT :zoom as z, x, y FROM generate_series(0, (2^:zoom-1)::int) as x, generate_series(0, (2^:zoom-1)::int) as y
+        ),
+        inserted as (
+            INSERT INTO tiles
+                SELECT z, x, y, mvt(z, x, y) FROM zxy
+            ON CONFLICT (z, x, y) DO UPDATE SET mvt = excluded.mvt
+            RETURNING z, x, y
         )
-        insert into tiles
-            select z, x, y, mvt(z, x, y) from zxy
-        on conflict (z, x, y) do update set mvt = excluded.mvt
+        SELECT count(*) FROM inserted
     """
     def run_level(zoom: int) -> None:
         logger.info(f"Creating all tiles for zoom: {zoom}")
         process_start = time.perf_counter()
-        db.execute(query, params={"zoom": zoom})
+        result = db.execute(query, params={"zoom": zoom}).first()
+        num_tiles_processed = result[0] if result else 0
         db.commit()
         process_end = time.perf_counter()
-        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_end - process_start, 4)} seconds")
+        tiles_per_s = num_tiles_processed / (process_end - process_start)
+        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_end - process_start, 4)} seconds. {round(tiles_per_s, 1)} tiles/s")
 
     if db.query(Tiles).first() is None:
         logger.info("Table tiles empty.")
