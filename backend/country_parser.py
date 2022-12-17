@@ -26,16 +26,23 @@ class Country:
 
 
 def parse_feature(feature: Feature) -> Optional[Country]:
-    if feature.properties["ISO_A2"] == "-99" and feature.properties["ISO_A2_EH"] in {"BR", "GA"}:
+    if (
+        feature.properties["ISO_A2"] == "-99"
+        and (
+            feature.properties["ISO_A2_EH"] == "BR"
+            or
+            (feature.properties["ISO_A2_EH"] == "GA" and feature.properties["NAME"] != "United Kingdom")
+        )
+    ):
         # duplicates/errors in Natural Earth dataset
         logger.warning(f"Ignoring feature with properties: {feature.properties}")
         return None
     country_code: str = feature.properties['ISO_A2_EH']
-    if country_code == "-99":
+    if feature.properties["NAME"] == "United Kingdom":
+        country_code = "GB"
+    elif country_code == "-99":
         if feature.properties["NAME"] == "Israel":
             country_code = "IL"
-        elif feature.properties["NAME"] == "United Kingdom":
-            country_code = "GB"
         else:
             logger.warning(f"Missing ISO Code for feature: {feature.properties}")
             return None
