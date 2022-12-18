@@ -1,10 +1,10 @@
 import datetime
 import time
 from logging import Logger
-from typing import Dict
 
 from sqlalchemy.orm import Session
 
+from backend import tiles_refresh_interval
 from backend.database.session import SessionLocal
 from backend.models import Metadata
 from backend.osm_loader import find_newest_replication_sequence, changes_between_seq
@@ -13,22 +13,6 @@ from backend.osm_loader import find_newest_replication_sequence, changes_between
 def process_expired_tiles_queue(logger: Logger) -> None:
     min_zoom = 0
     max_zoom = 13
-    refresh_interval: Dict[int, datetime.timedelta] = {
-        0: datetime.timedelta(hours=24),
-        1: datetime.timedelta(hours=12),
-        2: datetime.timedelta(hours=6),
-        3: datetime.timedelta(hours=1),
-        4: datetime.timedelta(hours=1),
-        5: datetime.timedelta(hours=1),
-        6: datetime.timedelta(minutes=30),
-        7: datetime.timedelta(minutes=30),
-        8: datetime.timedelta(minutes=30),
-        9: datetime.timedelta(minutes=15),
-        10: datetime.timedelta(minutes=5),
-        11: datetime.timedelta(minutes=3),
-        12: datetime.timedelta(minutes=2),
-        13: datetime.timedelta(minutes=0),
-    }
     query = """
         WITH
         tiles_to_update as (
@@ -55,7 +39,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
     process_start = time.perf_counter()
     db: Session = SessionLocal()
     for z in range(min_zoom, max_zoom + 1):
-        ts = datetime.datetime.utcnow() - refresh_interval[z]
+        ts = datetime.datetime.utcnow() - tiles_refresh_interval[z]
         run_level(zoom=z, older_than=ts)
     db.close()
     process_end = time.perf_counter()

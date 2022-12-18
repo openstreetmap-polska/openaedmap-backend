@@ -3,6 +3,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, Response, Path
 from sqlalchemy.orm import Session
 
+from backend import tiles_refresh_interval
 from backend.api.deps import get_db
 from backend.crud.tiles import get_vector_tile
 
@@ -19,13 +20,13 @@ async def vector_tile(
     """Get single vector tile.
     Usually you provide template to map library like https://host/tile/{z}/{x}/{y}.mvt and it figures out the rest."""
 
-    max_age = timedelta(minutes=(3 * (14 - z)))
+    max_age = tiles_refresh_interval.get(z, timedelta(seconds=60))
 
     return Response(
         status_code=200,
         media_type="application/vnd.mapbox-vector-tile",
         content=get_vector_tile(z, x, y, db),
         headers={
-            # "Cache-Control": f"max-age={int(max_age.total_seconds())}",
+            "Cache-Control": f"max-age={int(max_age.total_seconds())}",
         }
     )
