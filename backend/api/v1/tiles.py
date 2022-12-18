@@ -20,7 +20,7 @@ async def vector_tile(
     """Get single vector tile.
     Usually you provide template to map library like https://host/tile/{z}/{x}/{y}.mvt and it figures out the rest."""
 
-    max_age = tiles_refresh_interval.get(z, timedelta(seconds=60))
+    max_age = max(tiles_refresh_interval.get(z, timedelta(seconds=60)), timedelta(seconds=60))
 
     return Response(
         status_code=200,
