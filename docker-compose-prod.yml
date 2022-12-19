@@ -59,6 +59,7 @@ services:
             - prod-net
         environment:
             DEV: 0
+            WEB_CONCURRENCY: 4
 
     nginx:
         restart: always
