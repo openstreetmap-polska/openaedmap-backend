@@ -63,6 +63,7 @@ services:
             - dev-net
         environment:
             DEV: 1
+            WEB_CONCURRENCY: 1
 
     nginx:
         restart: always
