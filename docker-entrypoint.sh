@@ -9,4 +9,5 @@ done
 
 # Start server
 echo "Starting server"
-uvicorn backend.main:app $( (( $DEV == 1 )) && printf %s '--reload' ) --host 0.0.0.0 --port 8000
+echo "WEB_CONCURRENCY set to [$WEB_CONCURRENCY]"
+uvicorn backend.main:app $( (( $DEV == 1 )) && printf %s '--reload' ) --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
