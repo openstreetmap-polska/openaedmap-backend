@@ -60,7 +60,7 @@ app = FastAPI(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     max_age=int(timedelta(days=1).total_seconds()),
     allow_methods=["*"],
     allow_headers=["*"],
