@@ -47,6 +47,8 @@ services:
             -c wal_init_zero=off
         networks:
             - prod-net
+        volumes:
+            - ./.db-data:/var/lib/postgresql/data
     backend:
         restart: always
         env_file:
