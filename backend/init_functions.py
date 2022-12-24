@@ -65,7 +65,7 @@ def load_osm_nodes_if_db_empty() -> None:
                 result = db.execute(statement="""
                 WITH
                 updated_country_codes as (
-                    INSERT INTO osm_nodes(node_id, version, creator_id, added_in_changeset, country_code, geometry, tags, version_timestamp)
+                    INSERT INTO osm_nodes(node_id, version, creator_id, added_in_changeset, country_code, geometry, tags, version_1_ts, version_last_ts)
                     SELECT
                         node_id,
                         version,
@@ -74,7 +74,8 @@ def load_osm_nodes_if_db_empty() -> None:
                         country_code,
                         ST_SetSRID(ST_MakePoint(longitude, latitude), 4326) as geometry,
                         tags,
-                        version_timestamp
+                        CASE WHEN version = 1 THEN version_timestamp ELSE NULL END version_1_ts,
+                        version_timestamp as version_last_ts
                     FROM temp_nodes n
                     LEFT JOIN LATERAL (
                         SELECT country_code
