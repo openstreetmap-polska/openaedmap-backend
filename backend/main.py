@@ -71,16 +71,9 @@ app.add_middleware(
 async def startup_event():
     """Load data if missing."""
     init_logger.info("Running functions tied to server startup...")
-    db: Session = SessionLocal()
-    try:
-        init_countries(db)
-        load_osm_nodes_if_db_empty(db)
-        create_all_tiles(db)
-    except:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    init_countries()
+    load_osm_nodes_if_db_empty()
+    create_all_tiles()
     # start functions that will run periodically
     await cron_load_changes()
     await cron_process_expired_tiles_queue()

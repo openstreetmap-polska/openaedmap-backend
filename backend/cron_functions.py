@@ -2,8 +2,6 @@ import datetime
 import time
 from logging import Logger
 
-from sqlalchemy.orm import Session
-
 from backend import tiles_refresh_interval
 from backend.database.session import SessionLocal
 from backend.models import Metadata
@@ -30,24 +28,18 @@ def process_expired_tiles_queue(logger: Logger) -> None:
         SELECT COUNT(*) number_of_updated_tiles FROM updated_tiles
     """
     def run_level(zoom: int, older_than: datetime.datetime) -> None:
-        db.begin()
-        result = db.execute(query, params={"zoom": zoom, "older_than": older_than})
-        result = result.first()
-        for k, v in zip(result.keys(), result):
-            logger.info(f"Results (zoom: {zoom}) - {k}: {v}")
-        db.commit()
+        with db.begin():
+            result = db.execute(query, params={"zoom": zoom, "older_than": older_than})
+            result = result.first()
+            for k, v in zip(result.keys(), result):
+                logger.info(f"Results (zoom: {zoom}) - {k}: {v}")
+
     logger.info("Processing expired tiles queue...")
     process_start = time.perf_counter()
-    db: Session = SessionLocal()
-    try:
+    with SessionLocal() as db:
         for z in range(min_zoom, max_zoom + 1):
             ts = datetime.datetime.utcnow() - tiles_refresh_interval[z]
             run_level(zoom=z, older_than=ts)
-    except:
-        db.rollback()
-        raise
-    finally:
-        db.close()
     process_end = time.perf_counter()
     logger.info(f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds")
 
@@ -55,9 +47,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
 def load_changes(logger: Logger) -> None:
     logger.info("Running update process...")
     process_start = time.perf_counter()
-    db: Session = SessionLocal()
-    try:
-        db.begin()
+    with SessionLocal().begin() as db:
         db.execute(statement="""
             CREATE TEMPORARY TABLE temp_node_changes (
                 change_type varchar,
@@ -265,12 +255,6 @@ def load_changes(logger: Logger) -> None:
         """, params={"last_updated": new_seq.timestamp.isoformat(), "last_processed_sequence": new_seq.formatted})
         db.execute("DROP TABLE IF EXISTS temp_node_changes;")
         logger.info("Updated data. Committing...")
-        db.commit()
-        logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
-    except:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
     process_end = time.perf_counter()
     logger.info(f"Update took: {round(process_end - process_start, 4)} seconds")
