@@ -28,10 +28,12 @@ out meta qt;
 REPLICATION_MINUTE_URL = "https://planet.osm.org/replication/minute/"
 
 
-def make_sure_val_is_simple(value: int | float | str | dict) -> int | float | str:
+def make_sure_val_is_simple(value: int | float | str | dict | datetime) -> int | float | str:
     match value:
         case dict():
             return json.dumps(value)
+        case datetime():
+            return value.isoformat()
         case _:
             return value
 
@@ -53,6 +55,7 @@ class Node:
     latitude: float
     longitude: float
     tags: Dict[str, str]
+    version_timestamp: datetime
 
     def as_params_dict(self) -> dict:
         return {k: make_sure_val_is_simple(v) for k, v in self.__dict__.items()}
@@ -103,6 +106,7 @@ def full_list_from_overpass(
             latitude=n["lat"],
             longitude=n["lon"],
             tags=n["tags"],
+            version_timestamp=n["timestamp"],
         )
 
 
@@ -188,6 +192,7 @@ def xml_to_node(xml_element: Element) -> Node:
         latitude=xml_element.getAttribute("lat"),
         longitude=xml_element.getAttribute("lon"),
         tags=tags,
+        version_timestamp=xml_element.getAttribute("timestamp")
     )
 
 

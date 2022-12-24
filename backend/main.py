@@ -72,10 +72,15 @@ async def startup_event():
     """Load data if missing."""
     init_logger.info("Running functions tied to server startup...")
     db: Session = SessionLocal()
-    init_countries(db)
-    load_osm_nodes_if_db_empty(db)
-    create_all_tiles(db)
-    db.close()
+    try:
+        init_countries(db)
+        load_osm_nodes_if_db_empty(db)
+        create_all_tiles(db)
+    except:
+        db.rollback()
+        raise
+    finally:
+        db.close()
     # start functions that will run periodically
     await cron_load_changes()
     await cron_process_expired_tiles_queue()

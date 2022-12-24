@@ -12,7 +12,7 @@ from backend.database.base import Base
 class Countries(Base):
     __tablename__ = 'countries'
     __table_args__ = ()
-    country_code = Column(String(length=2), primary_key=True, doc='2 letter language code ISO 639-1')
+    country_code = Column(String(length=2), primary_key=True, doc='2 letter country ISO code')
     feature_count = Column(Integer, default=0, nullable=False)
     geometry = Column(
         Geometry(geometry_type='GEOMETRY', srid=4326, spatial_index=True),
