@@ -7,12 +7,10 @@ from fastapi import FastAPI
 from fastapi.logger import logger as fastapi_logger
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_utils.tasks import repeat_every
-from sqlalchemy.orm import Session
 
 from backend.api.v1.api import api_router
 from backend.core.config import settings
 from backend.cron_functions import process_expired_tiles_queue, load_changes
-from backend.database.session import SessionLocal
 from backend.init_functions import init_countries, load_osm_nodes_if_db_empty, create_all_tiles
 
 init_logger = logging.getLogger("init_logger")
@@ -88,3 +86,9 @@ def cron_load_changes() -> None:
 @repeat_every(seconds=60, wait_first=True, logger=cron_logger)
 def cron_process_expired_tiles_queue() -> None:
     process_expired_tiles_queue(cron_logger)
+
+
+# shouldn't be needed but prepared it just in case
+# @repeat_every(seconds=timedelta(days=5).total_seconds(), wait_first=True, logger=cron_logger)
+# def cron_queue_reload_of_all_tiles() -> None:
+#     queue_reload_of_all_tiles(cron_logger)
