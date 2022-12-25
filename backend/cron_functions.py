@@ -14,9 +14,11 @@ def process_expired_tiles_queue(logger: Logger) -> None:
     query = """
         WITH
         tiles_to_update as (
-            DELETE FROM tiles_queue
+            SELECT z, x, y
+            FROM tiles_queue
             WHERE z = :zoom AND inserted_at < :older_than
-            RETURNING z, x, y
+            LIMIT 100000
+            FOR UPDATE SKIP LOCKED
         ),
         updated_tiles as (
             UPDATE tiles t
@@ -24,8 +26,16 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             FROM tiles_to_update as u
             WHERE t.z=u.z AND t.x=u.x AND t.y=u.y
             RETURNING t.z, t.x, t.y
+        ),
+        deleted_queue_entries as (
+            DELETE FROM tiles_queue q
+            USING updated_tiles u
+            WHERE q.z=u.z AND q.x=u.x AND q.y=u.y
+            RETURNING q.z, q.x, q.y
         )
-        SELECT COUNT(*) number_of_updated_tiles FROM updated_tiles
+        SELECT
+            (SELECT COUNT(*) FROM updated_tiles) as number_of_updated_tiles,
+            (SELECT COUNT(*) FROM deleted_queue_entries) as deleted_queue_entries
     """
     def run_level(zoom: int, older_than: datetime.datetime) -> None:
         with db.begin():
