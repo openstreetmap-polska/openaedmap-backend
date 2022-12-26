@@ -17,6 +17,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             SELECT z, x, y
             FROM tiles_queue
             WHERE z = :zoom AND inserted_at < :older_than
+            ORDER BY inserted_at DESC
             LIMIT 100000
             FOR UPDATE SKIP LOCKED
         ),
