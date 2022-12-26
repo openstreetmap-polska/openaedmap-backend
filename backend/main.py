@@ -42,13 +42,6 @@ else:
 
 this_file_path = Path(__file__).absolute()
 
-allowed_origins = [
-    "https://openaedmap.org",
-    "https://www.openaedmap.org",
-    "https://dev.openaedmap.org",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
 
 app = FastAPI(
     title="Open AED Map - backend",
