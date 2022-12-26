@@ -1,14 +1,16 @@
 import logging
+import os
 import time
 from datetime import timedelta
 
+from geoalchemy2 import func
+from sqlalchemy import nullslast
+
 from backend.country_parser import parse_countries
+from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
 from backend.models import Countries, OsmNodes, Tiles
-from backend.osm_loader import (
-    full_list_from_overpass,
-    estimated_replication_sequence,
-)
+from backend.osm_loader import full_list_from_overpass, estimated_replication_sequence
 from backend.schemas.countries import CountriesCreate
 
 logger = logging.getLogger(__name__)
@@ -158,3 +160,43 @@ def create_all_tiles() -> None:
                 run_level(z)
         else:
             logger.info("Table tiles contains rows. Skipping full reload of tiles.")
+
+
+def generate_data_files_for_all_countries() -> None:
+    if len(os.listdir("/data")) > 0:
+        logger.info("There are files present in /data dir. Skipping generating all data files.")
+    else:
+        logger.info("Generating data files...")
+        logger.info("Getting data out of db.")
+        process_start = time.perf_counter()
+        with SessionLocal() as db:
+            country_codes = set([c[0] for c in db.query(Countries.country_code)])
+            nodes = db.query(
+                OsmNodes.node_id,
+                OsmNodes.country_code,
+                OsmNodes.tags,
+                func.ST_X(OsmNodes.geometry),
+                func.ST_Y(OsmNodes.geometry),
+            ).order_by(nullslast(OsmNodes.country_code.asc())).all()
+        world_data = [ExportedNode(*n) for n in nodes]
+        process_end = time.perf_counter()
+        process_time = process_end - process_start  # in seconds
+        logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
+        save_geojson_file(f"/data/world.geojson", world_data)
+        buffer: list[ExportedNode] = []
+        current_country = world_data[0].country_code
+        for node in world_data:
+            if node.country_code is not None:
+                if node.country_code != current_country:
+                    save_geojson_file(f"/data/{current_country}.geojson", buffer)
+                    country_codes.remove(current_country)
+                    current_country = node.country_code
+                    buffer = []
+                else:
+                    buffer.append(node)
+        if len(buffer) > 0:
+            save_geojson_file(f"/data/{current_country}.geojson", buffer)
+            country_codes.remove(current_country)
+        for country_code in country_codes:
+            save_geojson_file(f"/data/{country_code}.geojson", data=None)
+        logger.info("Finished generating data files.")

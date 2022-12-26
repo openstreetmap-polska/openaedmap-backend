@@ -1,4 +1,10 @@
 version: '3'
+volumes:
+    data_files:
+        driver_opts:
+            type: "local"
+            o: "bind"
+            device: ${DATA_FILES_DIR}
 services:
     db:
         restart: always
@@ -53,6 +59,8 @@ services:
         restart: always
         env_file:
             - .env
+        volumes:
+            - data_files:/data:rw
         build:
             context: .
             dockerfile: Dockerfile.prod
@@ -70,6 +78,7 @@ services:
             - ${PORT:-80}:80
         volumes:
             - ./nginx/nginx-proxy-prod.conf:/etc/nginx/conf.d/default.conf:ro
+            - data_files:/data:ro
         depends_on:
           - backend
         networks:

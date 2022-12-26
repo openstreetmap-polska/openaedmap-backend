@@ -24,7 +24,10 @@ POSTGRES_PORT=5432
 POSTGRES_DB=db
 POSTGRES_USER=test
 POSTGRES_PASSWORD=test123
+DATA_FILES_DIR=./.data-files
 ```
+
+!! Make sure that folder specified in `DATA_FILES_DIR` exists. !!
 
 ### Run development
 ```

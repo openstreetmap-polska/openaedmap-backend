@@ -2,9 +2,13 @@ import datetime
 import time
 from logging import Logger
 
+from geoalchemy2 import func
+from sqlalchemy import nullslast
+
 from backend import tiles_refresh_interval
+from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
-from backend.models import Metadata
+from backend.models import Metadata, OsmNodes
 from backend.osm_loader import find_newest_replication_sequence, changes_between_seq
 
 
@@ -279,3 +283,35 @@ def load_changes(logger: Logger) -> None:
     logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
     process_end = time.perf_counter()
     logger.info(f"Update took: {round(process_end - process_start, 4)} seconds")
+
+
+def generate_data_files_for_countries_with_data(logger: Logger) -> None:
+    logger.info("Generating data files...")
+    logger.info("Getting data out of db.")
+    process_start = time.perf_counter()
+    with SessionLocal() as db:
+        nodes = db.query(
+            OsmNodes.node_id,
+            OsmNodes.country_code,
+            OsmNodes.tags,
+            func.ST_X(OsmNodes.geometry),
+            func.ST_Y(OsmNodes.geometry),
+        ).order_by(nullslast(OsmNodes.country_code.asc())).all()
+    world_data = [ExportedNode(*n) for n in nodes]
+    process_end = time.perf_counter()
+    process_time = process_end - process_start  # in seconds
+    logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
+    save_geojson_file(f"/data/world.geojson", world_data)
+    buffer: list[ExportedNode] = []
+    current_country = world_data[0].country_code
+    for node in world_data:
+        if node.country_code is not None:
+            if node.country_code != current_country:
+                save_geojson_file(f"/data/{current_country}.geojson", buffer)
+                current_country = node.country_code
+                buffer = []
+            else:
+                buffer.append(node)
+    if len(buffer) > 0:
+        save_geojson_file(f"/data/{current_country}.geojson", buffer)
+    logger.info("Finished generating data files.")

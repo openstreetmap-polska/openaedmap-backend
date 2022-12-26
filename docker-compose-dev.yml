@@ -1,4 +1,10 @@
 version: '3'
+volumes:
+    data_files:
+        driver_opts:
+            type: "local"
+            o: "bind"
+            device: ${DATA_FILES_DIR}
 services:
     db:
         restart: always
@@ -58,6 +64,7 @@ services:
             - ./backend:/app/backend
             - ./migrations:/app/migrations
             - ./alembic.ini:/app/alembic.ini
+            - data_files:/data:rw
         command: ./docker-entrypoint.sh
         networks:
             - dev-net
@@ -72,6 +79,7 @@ services:
             - 8080:80
         volumes:
             - ./nginx/nginx-proxy-dev.conf:/etc/nginx/conf.d/default.conf:ro
+            - data_files:/data:ro
         depends_on:
           - backend
         networks:
