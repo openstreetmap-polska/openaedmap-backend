@@ -59,13 +59,12 @@ def process_expired_tiles_queue(logger: Logger) -> None:
     logger.info(f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds")
 
 
-# shouldn't be needed but prepared it just in case
-# def queue_reload_of_all_tiles(logger: Logger) -> None:
-#     logger.info("Queueing reload of all tiles...")
-#     with SessionLocal() as db:
-#         with db.begin():
-#             db.execute("CALL queue_reload_of_all_tiles();")
-#     logger.info("Finished putting all tiles into queue.")
+def queue_reload_of_all_tiles(logger: Logger) -> None:
+    logger.info("Queueing reload of all tiles...")
+    with SessionLocal() as db:
+        with db.begin():
+            db.execute("CALL queue_reload_of_all_tiles();")
+    logger.info("Finished putting all tiles into queue.")
 
 
 def load_changes(logger: Logger) -> None:

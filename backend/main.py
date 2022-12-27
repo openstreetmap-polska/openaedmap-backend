@@ -13,6 +13,7 @@ from backend.core.config import settings
 from backend.cron_functions import (
     process_expired_tiles_queue, load_changes,
     generate_data_files_for_countries_with_data,
+    queue_reload_of_all_tiles,
 )
 from backend.init_functions import (
     init_countries, load_osm_nodes_if_db_empty,
@@ -95,7 +96,7 @@ def cron_generate_data_files_for_countries_with_data() -> None:
     generate_data_files_for_countries_with_data(cron_logger)
 
 
-# shouldn't be needed but prepared it just in case
-# @repeat_every(seconds=timedelta(days=5).total_seconds(), wait_first=True, logger=cron_logger)
-# def cron_queue_reload_of_all_tiles() -> None:
-#     queue_reload_of_all_tiles(cron_logger)
+# to mitigate potential errors in update logic
+@repeat_every(seconds=timedelta(days=1).total_seconds(), wait_first=True, logger=cron_logger)
+def cron_queue_reload_of_all_tiles() -> None:
+    queue_reload_of_all_tiles(cron_logger)
