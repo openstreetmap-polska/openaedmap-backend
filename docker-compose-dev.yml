@@ -5,6 +5,11 @@ volumes:
             type: "local"
             o: "bind"
             device: ${DATA_FILES_DIR}
+    pg_data:
+        driver_opts:
+            type: "local"
+            o: "bind"
+            device: ${PG_DATA_DIR}
 services:
     db:
         restart: always
@@ -53,6 +58,8 @@ services:
             -c wal_init_zero=off
         networks:
             - dev-net
+        volumes:
+            - pg_data:/var/lib/postgresql/data
     backend:
         restart: always
         build:
