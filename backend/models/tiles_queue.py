@@ -14,7 +14,6 @@ class TilesQueue(Base):
     __tablename__ = 'tiles_queue'
     __table_args__ = (
         PrimaryKeyConstraint('z', 'x', 'y'),
-        {'prefixes': ['UNLOGGED']}
     )
     z = Column(SMALLINT, nullable=False)
     x = Column(Integer, nullable=False)

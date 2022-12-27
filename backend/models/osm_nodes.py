@@ -5,6 +5,7 @@ from sqlalchemy import (
     String,
     BigInteger,
     ForeignKey,
+    DateTime,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -18,9 +19,8 @@ class OsmNodes(Base):
     version = Column(Integer, nullable=False)
     creator_id = Column(Integer, nullable=True)
     added_in_changeset = Column(Integer, nullable=True)
-    country_code = Column(
-        String(2), ForeignKey('countries.country_code'), nullable=True, index=True,
-        doc='2 letter language code ISO 639-1'
-    )
+    version_1_ts = Column(DateTime(timezone=True), nullable=True)
+    version_last_ts = Column(DateTime(timezone=True), nullable=True)
+    country_code = Column(String(2), ForeignKey('countries.country_code'), nullable=True, index=True)
     geometry = Column(Geometry(geometry_type='POINT', srid=4326, spatial_index=True), nullable=False)
     tags = Column(JSONB, nullable=False)
