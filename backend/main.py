@@ -78,6 +78,7 @@ async def startup_event():
     await cron_load_changes()
     await cron_process_expired_tiles_queue()
     await cron_generate_data_files_for_countries_with_data()
+    await cron_queue_reload_of_all_tiles()
     init_logger.info("Server finished startup procedure.")
 
 
