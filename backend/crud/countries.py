@@ -20,6 +20,7 @@ class CountryInfo:
 class CountryNames:
     country_code: str
     country_names: dict
+    feature_count: int
     data_path: str
 
 
@@ -52,7 +53,12 @@ def get_countries_geojson(country_code: Optional[str], db: Session) -> dict:
 
 
 def get_countries_names(country_code: Optional[str], db: Session) -> List[CountryNames]:
-    query = db.query(Countries.country_code, Countries.country_names, func.concat("/data/", Countries.country_code, ".geojson"))
+    query = db.query(
+        Countries.country_code,
+        Countries.country_names,
+        Countries.feature_count,
+        func.concat("/data/", Countries.country_code, ".geojson"),
+    )
     if country_code:
         query.filter(Countries.country_code == country_code)
     return [CountryNames(*row) for row in query.all()]
