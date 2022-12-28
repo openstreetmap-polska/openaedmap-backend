@@ -20,6 +20,7 @@ class CountryInfo:
 class CountryNames:
     country_code: str
     country_names: dict
+    feature_count: int
     data_path: str
 
 
