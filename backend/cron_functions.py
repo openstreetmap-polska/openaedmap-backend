@@ -25,11 +25,10 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             FOR UPDATE SKIP LOCKED
         ),
         updated_tiles as (
-            UPDATE tiles t
-            SET mvt = mvt(u.z, u.x, u.y)
-            FROM tiles_to_update as u
-            WHERE t.z=u.z AND t.x=u.x AND t.y=u.y
-            RETURNING t.z, t.x, t.y
+            INSERT INTO tiles
+                SELECT z, x, y, mvt(z, x, y) FROM tiles_to_update
+            ON CONFLICT (z, x, y) DO UPDATE SET mvt = excluded.mvt
+            RETURNING z, x, y
         ),
         deleted_queue_entries as (
             DELETE FROM tiles_queue q
