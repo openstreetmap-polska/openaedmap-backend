@@ -2,10 +2,11 @@ import datetime
 import time
 from logging import Logger
 
+import sqlalchemy
 from geoalchemy2 import func
 from sqlalchemy import nullslast
 
-from backend import tiles_refresh_interval
+from backend import tiles_refresh_interval, min_zoom, max_zoom
 from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
 from backend.models import Metadata, OsmNodes
@@ -13,8 +14,6 @@ from backend.osm_loader import find_newest_replication_sequence, changes_between
 
 
 def process_expired_tiles_queue(logger: Logger) -> None:
-    min_zoom = 0
-    max_zoom = 13
     query = """
         WITH
         tiles_to_update as (
@@ -61,7 +60,10 @@ def queue_reload_of_all_tiles(logger: Logger) -> None:
     logger.info("Queueing reload of all tiles...")
     with SessionLocal() as db:
         with db.begin():
-            db.execute("CALL queue_reload_of_all_tiles();")
+            db.execute(
+                "CALL queue_reload_of_all_tiles(:min_zoom, :max_zoom)",
+                params={"min_zoom": min_zoom, "max_zoom": max_zoom},
+            )
     logger.info("Finished putting all tiles into queue.")
 
 
@@ -218,6 +220,7 @@ def load_changes(logger: Logger) -> None:
                 SELECT DISTINCT country_code
                 FROM osm_nodes
                 JOIN all_node_ids USING(node_id)
+                WHERE country_code IS NOT NULL
             ),
             country_code_counts as (
                 SELECT
@@ -234,15 +237,18 @@ def load_changes(logger: Logger) -> None:
                 WHERE countries.country_code = country_code_counts.country_code
                 RETURNING 1
             ),
+            insert_country_codes_to_queue as (
+                INSERT INTO countries_queue(country_code)
+                    SELECT country_code
+                    FROM country_codes_to_update
+                RETURNING country_code
+            ),
             insert_expired_tiles_to_queue as (
                 INSERT INTO tiles_queue(z, x, y, inserted_at)
-                    SELECT DISTINCT z, x, y, CURRENT_TIMESTAMP
-                    FROM tiles
-                    JOIN (
-                        SELECT ST_Transform(geometry, 3857) geometry
-                        FROM osm_nodes
-                        JOIN all_node_ids USING (node_id)
-                    ) as nodes ON ST_Intersects(nodes.geometry, ST_TileEnvelope(tiles.z, tiles.x, tiles.y))
+                    SELECT DISTINCT z, lon2tile(ST_X(geometry), z) as x, lat2tile(ST_Y(geometry), z) as y, CURRENT_TIMESTAMP
+                    FROM osm_nodes n
+                    JOIN all_node_ids USING(node_id)
+                    CROSS JOIN generate_series(:min_zoom, :max_zoom) as z
                 ON CONFLICT DO NOTHING
                 RETURNING z, x, y
             )
@@ -265,8 +271,9 @@ def load_changes(logger: Logger) -> None:
                 (SELECT COUNT(*) FROM country_codes_to_update) as db_country_codes_to_update,
                 (SELECT COUNT(*) FROM country_code_counts) as db_country_code_counts,
                 (SELECT COUNT(*) FROM update_countries) as db_updated_countries,
+                (SELECT COUNT(*) FROM insert_country_codes_to_queue) as inserted_country_codes_to_queue_to_gen_files,
                 (SELECT COUNT(*) FROM insert_expired_tiles_to_queue) as expired_tiles_added_to_queue
-            """)
+            """, params={"min_zoom": min_zoom, "max_zoom": max_zoom})
             for k, v in zip(result.keys(), result.first() or []):
                 logger.info(f"Load result - {k}: {v}")
             db.execute("""
@@ -283,32 +290,43 @@ def load_changes(logger: Logger) -> None:
 
 
 def generate_data_files_for_countries_with_data(logger: Logger) -> None:
-    logger.info("Generating data files...")
-    logger.info("Getting data out of db.")
-    process_start = time.perf_counter()
     with SessionLocal() as db:
-        nodes = db.query(
-            OsmNodes.node_id,
-            OsmNodes.country_code,
-            OsmNodes.tags,
-            func.ST_X(OsmNodes.geometry),
-            func.ST_Y(OsmNodes.geometry),
-        ).order_by(nullslast(OsmNodes.country_code.asc())).all()
-    world_data = [ExportedNode(*n) for n in nodes]
-    process_end = time.perf_counter()
-    process_time = process_end - process_start  # in seconds
-    logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
-    save_geojson_file(f"/data/world.geojson", world_data)
-    buffer: list[ExportedNode] = []
-    current_country = world_data[0].country_code
-    for node in world_data:
-        if node.country_code is not None:
-            if node.country_code != current_country:
-                save_geojson_file(f"/data/{current_country}.geojson", buffer)
-                current_country = node.country_code
-                buffer = []
-            else:
-                buffer.append(node)
-    if len(buffer) > 0:
-        save_geojson_file(f"/data/{current_country}.geojson", buffer)
-    logger.info("Finished generating data files.")
+        codes = [x[0] for x in db.execute("SELECT country_code FROM countries_queue FOR UPDATE SKIP LOCKED").all()]
+        if len(codes) > 0:
+            db.commit()  # close previous transaction
+            with db.begin():
+                logger.info("Generating data files...")
+                logger.info("Getting data out of db.")
+                process_start = time.perf_counter()
+                nodes = db.query(
+                    OsmNodes.node_id,
+                    OsmNodes.country_code,
+                    OsmNodes.tags,
+                    func.ST_X(OsmNodes.geometry),
+                    func.ST_Y(OsmNodes.geometry),
+                ).order_by(nullslast(OsmNodes.country_code.asc())).all()
+                world_data = [ExportedNode(*n) for n in nodes]
+                process_end = time.perf_counter()
+                process_time = process_end - process_start  # in seconds
+                logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
+                save_geojson_file(f"/data/world.geojson", world_data)
+                buffer: list[ExportedNode] = []
+                distinct_codes = set(codes)
+                starting_index = 0
+                while world_data[starting_index].country_code not in distinct_codes and starting_index < len(world_data) - 1:
+                    starting_index += 1
+                current_country = world_data[starting_index].country_code
+                for node in world_data[starting_index:]:
+                    if node.country_code is not None and node.country_code in distinct_codes:
+                        if node.country_code != current_country:
+                            save_geojson_file(f"/data/{current_country}.geojson", buffer)
+                            current_country = node.country_code
+                            buffer = []
+                        else:
+                            buffer.append(node)
+                if len(buffer) > 0:
+                    save_geojson_file(f"/data/{current_country}.geojson", buffer)
+                db.execute(sqlalchemy.text("DELETE FROM countries_queue WHERE country_code = ANY(:codes)"), params={"codes": list(distinct_codes)})
+            logger.info("Finished generating data files.")
+        else:
+            logger.info("No (unlocked) rows in countries_queue. Skipping writing files.")

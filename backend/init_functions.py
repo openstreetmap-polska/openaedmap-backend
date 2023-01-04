@@ -6,6 +6,7 @@ from datetime import timedelta
 from geoalchemy2 import func
 from sqlalchemy import nullslast
 
+from backend import min_zoom, max_zoom
 from backend.country_parser import parse_countries
 from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
@@ -125,39 +126,36 @@ def load_osm_nodes_if_db_empty() -> None:
             logger.info("Table with osm nodes is not empty. Skipping full load.")
 
 def create_all_tiles() -> None:
-    min_zoom = 0
-    max_zoom = 13
-    query= """
-    WITH
-        zxy as (
-            SELECT :zoom as z, x, y FROM generate_series(0, (2^:zoom-1)::int) as x, generate_series(0, (2^:zoom-1)::int) as y
+    query = """
+        WITH
+        tiles_to_create as (
+            SELECT DISTINCT z, lon2tile(ST_X(geometry), z) as x, lat2tile(ST_Y(geometry), z) as y
+            FROM osm_nodes n
+            CROSS JOIN generate_series(0, 13) as z
         ),
-        inserted as (
+        upserted as (
             INSERT INTO tiles
-                SELECT z, x, y, mvt(z, x, y) FROM zxy
+                SELECT z, x, y, mvt(z, x, y) FROM tiles_to_create
             ON CONFLICT (z, x, y) DO UPDATE SET mvt = excluded.mvt
             RETURNING z, x, y
         )
-        SELECT count(*) FROM inserted
+        SELECT count(*) number_of_upserted_rows FROM upserted
     """
-    def run_level(zoom: int) -> None:
-        logger.info(f"Creating all tiles for zoom: {zoom}")
-        process_start = time.perf_counter()
-        with db.begin():
-            result = db.execute(query, params={"zoom": zoom}).first()
-        num_tiles_processed = result[0] if result else 0
-        process_end = time.perf_counter()
-        process_time = process_end - process_start  # in seconds
-        tiles_per_s = num_tiles_processed / process_time
-        logger.info(f"Creating tiles for zoom: {zoom} took: {round(process_time, 4)} seconds. "
-                    f"{num_tiles_processed} tiles at {round(tiles_per_s, 1)} tiles/s")
-
     with SessionLocal() as db:
         if db.query(Tiles).first() is None:
             db.commit()  # close previous transaction
-            logger.info("Table tiles empty.")
-            for z in range(min_zoom, max_zoom + 1):
-                run_level(z)
+            logger.info("Table tiles empty. Creating all tiles.")
+            process_start = time.perf_counter()
+            with db.begin():
+                result = db.execute(query, params={"min_zoom": min_zoom, "max_zoom": max_zoom}).first()
+            num_tiles_processed = result[0] if result else 0
+            process_end = time.perf_counter()
+            process_time = process_end - process_start  # in seconds
+            tiles_per_s = num_tiles_processed / process_time
+            logger.info(
+                f"Creating tiles took: {round(process_time, 4)} seconds. "
+                f"{num_tiles_processed} tiles at {round(tiles_per_s, 1)} tiles/s"
+            )
         else:
             logger.info("Table tiles contains rows. Skipping full reload of tiles.")
 
