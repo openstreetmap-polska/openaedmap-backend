@@ -3,6 +3,7 @@ import json
 import logging
 import urllib.parse
 import xml.dom.pulldom
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -229,7 +230,13 @@ def changes_between_seq(
     if type(end_sequence) == str:
         end_sequence = replication_sequence_to_int(end_sequence)
 
-    for seq in range(start_sequence, end_sequence + 1):
-        osc_url = urllib.parse.urljoin(replication_url, f"{format_replication_sequence(seq)}.osc.gz")
-        for change in download_and_parse_change_file(osc_url):
-            yield change
+    list_of_urls = [
+        urllib.parse.urljoin(replication_url, f"{format_replication_sequence(seq)}.osc.gz")
+        for seq in range(start_sequence, end_sequence + 1)
+    ]
+    logger.info(f"There are: {len(list_of_urls)} OSC files to download.")
+    with ThreadPoolExecutor() as executor:
+        for result in executor.map(download_and_parse_change_file, list_of_urls):
+            for change in result:
+                yield change
+    logger.info("Finished downloading and parsing OSC files.")

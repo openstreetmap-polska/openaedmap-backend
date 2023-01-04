@@ -11,10 +11,13 @@ tiles_refresh_interval: Dict[int, datetime.timedelta] = {
     5: datetime.timedelta(hours=1),
     6: datetime.timedelta(minutes=30),
     7: datetime.timedelta(minutes=30),
-    8: datetime.timedelta(minutes=30),
-    9: datetime.timedelta(minutes=15),
+    8: datetime.timedelta(minutes=15),
+    9: datetime.timedelta(minutes=10),
     10: datetime.timedelta(minutes=5),
     11: datetime.timedelta(minutes=3),
     12: datetime.timedelta(minutes=2),
     13: datetime.timedelta(minutes=0),
 }
+
+min_zoom = 0
+max_zoom = 13
