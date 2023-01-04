@@ -33,6 +33,11 @@ docker-compose -f docker-compose-dev.yml -p dev up --build
 
 Go to: http://localhost:8080/docs
 
+Cleanup:
+```
+docker-compose -f docker-compose-dev.yml -p dev down
+```
+
 ### Run production
 
 When deploying and using `docker-compose-prod.yml` you also need to add to `.env`:
@@ -56,7 +61,13 @@ PORT=80 docker-compose -f docker-compose-prod.yml -p prod up -d
 
 #### Stop
 ```
-PORT=80 docker-compose -f docker-compose-prod.yml -p prod stop
+docker-compose -f docker-compose-prod.yml -p prod stop
+```
+
+#### Down
+*Stops containers and removes containers, networks, volumes, and images created by up. [More info in docs](https://docs.docker.com/engine/reference/commandline/compose_down/)*
+```
+docker-compose -f docker-compose-prod.yml -p prod down
 ```
 
 ### Log into database
