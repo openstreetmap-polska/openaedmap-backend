@@ -35,8 +35,9 @@ Go to: http://localhost:8080/docs
 
 Cleanup:
 ```
-docker-compose -f docker-compose-dev.yml -p dev down
+docker-compose -f docker-compose-dev.yml -p dev down -v
 ```
+-v - removes named volumes additionally to removing containers and networks
 
 ### Run production
 
@@ -65,7 +66,7 @@ docker-compose -f docker-compose-prod.yml -p prod stop
 ```
 
 #### Down
-*Stops containers and removes containers, networks, volumes, and images created by up. [More info in docs](https://docs.docker.com/engine/reference/commandline/compose_down/)*
+*Stops containers and removes containers and networks created by up. [More info in docs](https://docs.docker.com/engine/reference/commandline/compose_down/)*
 ```
 docker-compose -f docker-compose-prod.yml -p prod down
 ```
