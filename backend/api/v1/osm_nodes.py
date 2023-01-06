@@ -17,7 +17,7 @@ router = APIRouter()
 async def osm_node(
     node_id: int = Path(description="Id of OSM Node", gt=0),
     db: Session = Depends(get_db),
-) -> Response:
+) -> Response | dict:
     request_receive_dt = datetime.utcnow()
 
     node_data: OsmNodes | None = db.get(entity=OsmNodes, ident=node_id)
@@ -37,7 +37,7 @@ async def osm_node(
                     "id": node_data.node_id,
                     "lat": db.scalar(func.ST_Y(node_data.geometry)),
                     "lon": db.scalar(func.ST_X(node_data.geometry)),
-                    "timestamp": None,
+                    "timestamp": node_data.version_last_ts,
                     "version": node_data.version,
                     "changeset": None,
                     "user": None,
