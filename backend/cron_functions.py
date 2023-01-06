@@ -4,32 +4,33 @@ from logging import Logger
 
 import sqlalchemy
 from geoalchemy2 import func
-from sqlalchemy import nullslast
+from sqlalchemy import nullslast, insert
 
 from backend import tiles_refresh_interval, min_zoom, max_zoom
 from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
 from backend.models import Metadata, OsmNodes
+from backend.models.temp_node_changes import TempNodeChanges
 from backend.osm_loader import find_newest_replication_sequence, changes_between_seq
 
 
 def process_expired_tiles_queue(logger: Logger) -> None:
     query = """
         WITH
-        tiles_to_update as (
+        tiles_to_update(z, x, y) as (
             SELECT z, x, y
             FROM tiles_queue
             WHERE z = :zoom AND inserted_at < :older_than
             LIMIT 100000
             FOR UPDATE SKIP LOCKED
         ),
-        updated_tiles as (
+        updated_tiles(z, x, y) as (
             INSERT INTO tiles
                 SELECT z, x, y, mvt(z, x, y) FROM tiles_to_update
             ON CONFLICT (z, x, y) DO UPDATE SET mvt = excluded.mvt
             RETURNING z, x, y
         ),
-        deleted_queue_entries as (
+        deleted_queue_entries(z, x, y) as (
             DELETE FROM tiles_queue q
             USING updated_tiles u
             WHERE q.z=u.z AND q.x=u.x AND q.y=u.y
@@ -60,10 +61,7 @@ def queue_reload_of_all_tiles(logger: Logger) -> None:
     logger.info("Queueing reload of all tiles...")
     with SessionLocal() as db:
         with db.begin():
-            db.execute(
-                "CALL queue_reload_of_all_tiles(:min_zoom, :max_zoom)",
-                params={"min_zoom": min_zoom, "max_zoom": max_zoom},
-            )
+            db.execute("CALL queue_reload_of_all_tiles()")
     logger.info("Finished putting all tiles into queue.")
 
 
@@ -72,46 +70,39 @@ def load_changes(logger: Logger) -> None:
     process_start = time.perf_counter()
     with SessionLocal() as db:
         with db.begin():
-            db.execute(statement="""
-                CREATE TEMPORARY TABLE temp_node_changes (
-                    change_type varchar,
-                    node_id bigint,
-                    version int,
-                    uid int,
-                    "user" varchar,
-                    changeset int,
-                    latitude double precision,
-                    longitude double precision,
-                    tags jsonb,
-                    version_timestamp timestamp with time zone
-                );
-            """)
             current_meta: Metadata = db.query(Metadata).one()
             logger.info(f"Current metadata: "
                         f"last_processed_sequence={current_meta.last_processed_sequence}, "
                         f"last_updated={current_meta.last_updated}")
             new_seq = find_newest_replication_sequence()
-            for change in changes_between_seq(start_sequence=current_meta.last_processed_sequence, end_sequence=new_seq.number):
-                db.execute(
-                    statement="""
-                        INSERT INTO temp_node_changes VALUES
-                        (:type, :node_id, :version, :uid, :user, :changeset, :latitude, :longitude, :tags, :version_timestamp);""",
-                    params=change.as_params_dict()
-                )
-            count = db.execute(statement="SELECT COUNT(*) FROM temp_node_changes;").first()[0]
-            logger.info(f"Inserted: {count} rows to temp table.")
+            db.execute(
+                insert(TempNodeChanges.__table__),
+                [
+                    change.as_params_dict()
+                    for change in changes_between_seq(
+                        start_sequence=current_meta.last_processed_sequence, end_sequence=new_seq.number, skip_first=True
+                    )
+                ]
+            )
+            logger.info(f"Inserted: {db.query(TempNodeChanges).count()} rows to temp table.")
             result = db.execute("""
             WITH
-            changes as (
+            -- raw data
+            changes(
+                change_type, node_id, version, uid, "user", changeset, latitude, longitude, tags, version_timestamp, rn
+            ) as (
                 SELECT *, ROW_NUMBER() OVER(PARTITION BY node_id ORDER BY version DESC) as rn
                 FROM temp_node_changes
             ),
-            last_changes as (
+            last_changes(
+                change_type, node_id, version, uid, "user", changeset, latitude, longitude, tags, version_timestamp, rn, is_defib
+            ) as (
                 SELECT *, c.tags @> '{"emergency":"defibrillator"}'::jsonb as is_defib
                 FROM changes c
                 WHERE rn=1
             ),
-            nodes_with_removed_defibrillator_tag as (
+            -- classified data
+            nodes_with_removed_defibrillator_tag(node_id) as (
                 SELECT node_id
                 FROM last_changes as c
                 JOIN osm_nodes as n USING(node_id)
@@ -119,12 +110,14 @@ def load_changes(logger: Logger) -> None:
                     AND c.version > n.version
                     AND NOT c.is_defib
             ),
-            deleted_nodes as (
+            deleted_nodes(node_id, is_defib) as (
                 SELECT node_id, is_defib
                 FROM last_changes as c
                 WHERE change_type = 'delete'
             ),
-            created_defibrillators as (
+            created_defibrillators(
+                node_id, version, uid, "user", changeset, latitude, longitude, tags, geometry, country_code, version_timestamp
+            ) as (
                 SELECT
                     node_id,
                     version,
@@ -149,7 +142,9 @@ def load_changes(logger: Logger) -> None:
                     AND change_type = 'create'
                     AND is_defib
             ),
-            modified_defibrillators as (
+            modified_defibrillators(
+                node_id, version, uid, "user", changeset, latitude, longitude, tags, geometry, country_code, version_timestamp
+            ) as (
                 SELECT
                     node_id,
                     version,
@@ -174,7 +169,8 @@ def load_changes(logger: Logger) -> None:
                     AND change_type = 'modify'
                     AND is_defib
             ),
-            delete_defibrillators as (
+            -- apply updates
+            delete_defibrillators(node_id, country_code, geometry) as (
                 DELETE FROM osm_nodes as o
                 USING (
                     SELECT node_id FROM deleted_nodes
@@ -182,47 +178,53 @@ def load_changes(logger: Logger) -> None:
                     SELECT node_id FROM nodes_with_removed_defibrillator_tag
                 ) d
                 WHERE o.node_id = d.node_id
-                RETURNING o.node_id
+                RETURNING o.node_id, o.country_code, o.geometry
             ),
-            insert_defibrillators as (
+            insert_defibrillators(node_id, country_code, geometry) as (
                 INSERT INTO osm_nodes (node_id, version, creator_id, added_in_changeset, country_code, geometry, tags, version_1_ts, version_last_ts)
-                SELECT
-                    node_id,
-                    version,
-                    uid,
-                    changeset,
-                    country_code,
-                    geometry,
-                    tags,
-                    version_timestamp,
-                    version_timestamp
-                FROM created_defibrillators
+                    SELECT
+                        node_id,
+                        version,
+                        uid,
+                        changeset,
+                        country_code,
+                        geometry,
+                        tags,
+                        version_timestamp,
+                        version_timestamp
+                    FROM created_defibrillators
                 ON CONFLICT DO NOTHING
-                RETURNING node_id
+                RETURNING node_id, country_code, geometry
             ),
-            update_defibrillators as (
+            update_defibrillators(node_id, country_code, geometry) as (
                 UPDATE osm_nodes o
                 SET (node_id, version, country_code, geometry, tags, version_last_ts) = (m.node_id, m.version, m.country_code, m.geometry, m.tags, m.version_timestamp)
                 FROM modified_defibrillators m
                 WHERE 1=1
                     AND o.node_id = m.node_id
                     AND m.version > o.version
-                RETURNING o.node_id
+                RETURNING m.node_id, m.country_code, m.geometry
             ),
-            all_node_ids as (
+            -- after update actions
+            all_node_ids(node_id) as (
                 SELECT node_id FROM insert_defibrillators
                 UNION
                 SELECT node_id FROM update_defibrillators
                 UNION
                 SELECT node_id FROM delete_defibrillators
             ),
-            country_codes_to_update as (
-                SELECT DISTINCT country_code
-                FROM osm_nodes
-                JOIN all_node_ids USING(node_id)
+            country_codes_to_update(country_code) as (
+                SELECT country_code
+                FROM (
+                    SELECT DISTINCT country_code FROM insert_defibrillators
+                    UNION
+                    SELECT DISTINCT country_code FROM update_defibrillators
+                    UNION
+                    SELECT DISTINCT country_code FROM delete_defibrillators
+                ) c
                 WHERE country_code IS NOT NULL
             ),
-            country_code_counts as (
+            country_code_counts(country_code, feature_count) as (
                 SELECT
                     country_code,
                     count(*) as feature_count
@@ -237,21 +239,44 @@ def load_changes(logger: Logger) -> None:
                 WHERE countries.country_code = country_code_counts.country_code
                 RETURNING 1
             ),
-            insert_country_codes_to_queue as (
+            insert_country_codes_to_queue(country_code) as (
                 INSERT INTO countries_queue(country_code)
                     SELECT country_code
                     FROM country_codes_to_update
                 RETURNING country_code
             ),
-            insert_expired_tiles_to_queue as (
+            low_zoom_tile_names(z, x, y) as (
+                SELECT DISTINCT z, x, y
+                FROM (
+                    SELECT z, x, y, ST_Transform(ST_TileEnvelope(z, x, y), 4326) as geometry
+                    FROM get_tile_names(0, 5)
+                ) n
+                JOIN countries c ON ST_Intersects(n.geometry, c.geometry)
+            ),
+            tiles_with_nodes(z, x, y) as (
+                SELECT DISTINCT z, lon2tile(ST_X(geometry), z) as x, lat2tile(ST_Y(geometry), z) as y
+                FROM (
+                    SELECT geometry FROM insert_defibrillators
+                    UNION
+                    SELECT geometry FROM update_defibrillators
+                    UNION
+                    SELECT geometry FROM delete_defibrillators
+                ) n
+                CROSS JOIN generate_series(6, 13) as z
+            ),
+            tiles_to_update(z, x, y) as (
+                SELECT z, x, y FROM low_zoom_tile_names
+                UNION ALL
+                SELECT z, x, y FROM tiles_with_nodes
+            ),
+            insert_expired_tiles_to_queue(z, x, y) as (
                 INSERT INTO tiles_queue(z, x, y, inserted_at)
-                    SELECT DISTINCT z, lon2tile(ST_X(geometry), z) as x, lat2tile(ST_Y(geometry), z) as y, CURRENT_TIMESTAMP
-                    FROM osm_nodes n
-                    JOIN all_node_ids USING(node_id)
-                    CROSS JOIN generate_series(:min_zoom, :max_zoom) as z
+                    SELECT z, x, y, CURRENT_TIMESTAMP
+                    FROM tiles_to_update
                 ON CONFLICT DO NOTHING
                 RETURNING z, x, y
             )
+            -- summary
             SELECT
                 (SELECT COUNT(*) FROM changes) as inserted_node_changes,
                 (SELECT COUNT(*) FROM last_changes) as newest_changes_per_object,
@@ -273,16 +298,16 @@ def load_changes(logger: Logger) -> None:
                 (SELECT COUNT(*) FROM update_countries) as db_updated_countries,
                 (SELECT COUNT(*) FROM insert_country_codes_to_queue) as inserted_country_codes_to_queue_to_gen_files,
                 (SELECT COUNT(*) FROM insert_expired_tiles_to_queue) as expired_tiles_added_to_queue
-            """, params={"min_zoom": min_zoom, "max_zoom": max_zoom})
+            """)
             for k, v in zip(result.keys(), result.first() or []):
                 logger.info(f"Load result - {k}: {v}")
             db.execute("""
                 UPDATE metadata
                 SET (total_count, last_updated, last_processed_sequence) = (
-                 (SELECT COUNT(*) FROM osm_nodes), :last_updated, :last_processed_sequence
+                    (SELECT COUNT(*) FROM osm_nodes), :last_updated, :last_processed_sequence
                 )
             """, params={"last_updated": new_seq.timestamp.isoformat(), "last_processed_sequence": new_seq.formatted})
-            db.execute("DROP TABLE IF EXISTS temp_node_changes;")
+            db.execute("DELETE FROM temp_node_changes")
             logger.info("Updated data. Committing...")
     logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
     process_end = time.perf_counter()

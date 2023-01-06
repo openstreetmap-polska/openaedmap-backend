@@ -70,7 +70,7 @@ class Change:
     def as_params_dict(self) -> dict:
         node = {k: make_sure_val_is_simple(v) for k, v in self.element.__dict__.items()}
         return {
-            "type": self.type,
+            "change_type": self.type,
             **node
         }
 
@@ -221,12 +221,15 @@ def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
 def changes_between_seq(
     start_sequence: str | int,
     end_sequence: str | int,
-    replication_url: str = REPLICATION_MINUTE_URL
+    replication_url: str = REPLICATION_MINUTE_URL,
+    skip_first: bool = False,
 ) -> Generator[Change, None, None]:
-    """Download and parse all changes since provided sequence number. Yields Nodes."""
+    """Download and parse all changes since provided sequence number. Yields Changes of Nodes."""
 
     if type(start_sequence) == str:
         start_sequence = replication_sequence_to_int(start_sequence)
+    if skip_first:
+        start_sequence += 1
     if type(end_sequence) == str:
         end_sequence = replication_sequence_to_int(end_sequence)
 

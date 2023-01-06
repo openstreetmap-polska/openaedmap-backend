@@ -6,7 +6,6 @@ from datetime import timedelta
 from geoalchemy2 import func
 from sqlalchemy import nullslast
 
-from backend import min_zoom, max_zoom
 from backend.country_parser import parse_countries
 from backend.data_file_generator import ExportedNode, save_geojson_file
 from backend.database.session import SessionLocal
@@ -67,29 +66,29 @@ def load_osm_nodes_if_db_empty() -> None:
                 logger.info(f"Inserted: {count} rows to temp table.")
                 result = db.execute(statement="""
                 WITH
-                updated_country_codes as (
+                updated_country_codes(country_code) as (
                     INSERT INTO osm_nodes(node_id, version, creator_id, added_in_changeset, country_code, geometry, tags, version_1_ts, version_last_ts)
-                    SELECT
-                        node_id,
-                        version,
-                        CASE WHEN version = 1 THEN uid ELSE NULL END creator_id,
-                        CASE WHEN version = 1 THEN changeset ELSE NULL END added_in_changeset,
-                        country_code,
-                        ST_SetSRID(ST_MakePoint(longitude, latitude), 4326) as geometry,
-                        tags,
-                        CASE WHEN version = 1 THEN version_timestamp ELSE NULL END version_1_ts,
-                        version_timestamp as version_last_ts
-                    FROM temp_nodes n
-                    LEFT JOIN LATERAL (
-                        SELECT country_code
-                        FROM countries c
-                        WHERE ST_DWithin(c.geometry, ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 0.1)
-                        ORDER BY c.geometry <-> ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-                        LIMIT 1
-                    ) nearest_country ON true
+                        SELECT
+                            node_id,
+                            version,
+                            CASE WHEN version = 1 THEN uid ELSE NULL END creator_id,
+                            CASE WHEN version = 1 THEN changeset ELSE NULL END added_in_changeset,
+                            country_code,
+                            ST_SetSRID(ST_MakePoint(longitude, latitude), 4326) as geometry,
+                            tags,
+                            CASE WHEN version = 1 THEN version_timestamp ELSE NULL END version_1_ts,
+                            version_timestamp as version_last_ts
+                        FROM temp_nodes n
+                        LEFT JOIN LATERAL (
+                            SELECT country_code
+                            FROM countries c
+                            WHERE ST_DWithin(c.geometry, ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 0.1)
+                            ORDER BY c.geometry <-> ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+                            LIMIT 1
+                        ) nearest_country ON true
                     RETURNING country_code
                 ),
-                counts as (
+                counts(country_code, feature_count) as (
                     SELECT
                         country_code,
                         count(*) as feature_count
@@ -106,7 +105,7 @@ def load_osm_nodes_if_db_empty() -> None:
                 ),
                 insert_metadata as (
                     INSERT INTO metadata (id, total_count, last_updated, last_processed_sequence)
-                    VALUES (0, (SELECT SUM(feature_count) FROM counts), :estimated_ts, :estimated_sequence)
+                        VALUES (0, (SELECT SUM(feature_count) FROM counts), :estimated_ts, :estimated_sequence)
                     RETURNING 1
                 )
                 SELECT
@@ -125,17 +124,13 @@ def load_osm_nodes_if_db_empty() -> None:
         else:
             logger.info("Table with osm nodes is not empty. Skipping full load.")
 
+
 def create_all_tiles() -> None:
     query = """
         WITH
-        tiles_to_create as (
-            SELECT DISTINCT z, lon2tile(ST_X(geometry), z) as x, lat2tile(ST_Y(geometry), z) as y
-            FROM osm_nodes n
-            CROSS JOIN generate_series(0, 13) as z
-        ),
         upserted as (
             INSERT INTO tiles
-                SELECT z, x, y, mvt(z, x, y) FROM tiles_to_create
+                SELECT z, x, y, mvt(z, x, y) FROM get_tile_names_for_non_empty()
             ON CONFLICT (z, x, y) DO UPDATE SET mvt = excluded.mvt
             RETURNING z, x, y
         )
@@ -147,7 +142,7 @@ def create_all_tiles() -> None:
             logger.info("Table tiles empty. Creating all tiles.")
             process_start = time.perf_counter()
             with db.begin():
-                result = db.execute(query, params={"min_zoom": min_zoom, "max_zoom": max_zoom}).first()
+                result = db.execute(query).first()
             num_tiles_processed = result[0] if result else 0
             process_end = time.perf_counter()
             process_time = process_end - process_start  # in seconds
