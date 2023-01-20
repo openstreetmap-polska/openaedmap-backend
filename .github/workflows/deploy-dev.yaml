@@ -30,6 +30,7 @@ jobs:
         run: |
           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
             set -e
+            ls -la
             mkdir -p .data-files
             mkdir -p .db-data
             cd /home/${{ secrets.SSH_USER_NEW }}/dev/
