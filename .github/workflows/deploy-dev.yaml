@@ -18,6 +18,7 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
           ssh-port: ${{ secrets.SSH_HOST_NEW_PORT }}
+      - uses: actions/checkout@v3
       - name: Copy repository
         run: |
           ls -la
