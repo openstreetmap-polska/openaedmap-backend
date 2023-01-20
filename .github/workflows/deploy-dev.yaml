@@ -18,6 +18,9 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
           ssh-port: ${{ secrets.SSH_HOST_NEW_PORT }}
+      - name: Copy repository
+        run: |
+          ls -la
       - name: Run deploy script on host
         run: |
           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
