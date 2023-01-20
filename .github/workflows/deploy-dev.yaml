@@ -3,7 +3,7 @@ name: deploy-dev
 on:
   push:
     branches:
-      - dev
+      - dev#modifypipeline
     paths-ignore:
       - '*.md'
 
@@ -16,13 +16,14 @@ jobs:
         uses: kielabokkie/ssh-key-and-known-hosts-action@v1
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh-host: ${{ secrets.SSH_HOST_IP }}
+          ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
           ssh-port: ${{ secrets.SSH_HOST_PORT }}
       - name: Run deploy script on host
         run: |
-          ssh -t -p ${{ secrets.SSH_HOST_PORT }} -l ${{ secrets.SSH_USER }} ${{ secrets.SSH_HOST_IP }} << EOF
+          ssh -t -p ${{ secrets.SSH_HOST_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
             set -e
-            cd /home/${{ secrets.SSH_USER }}/dev/
+            mkdir -p /home/${{ secrets.SSH_USER_NEW }}/dev/
+            cd /home/${{ secrets.SSH_USER_NEW }}/dev/
             git fetch
             git checkout origin/dev
             PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
