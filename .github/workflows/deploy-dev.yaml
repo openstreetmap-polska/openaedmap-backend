@@ -17,10 +17,10 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
-          ssh-port: ${{ secrets.SSH_HOST_PORT }}
+          ssh-port: ${{ secrets.SSH_HOST_NEW_PORT }}
       - name: Run deploy script on host
         run: |
-          ssh -t -p ${{ secrets.SSH_HOST_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
+          ssh -t -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
             set -e
             mkdir -p /home/${{ secrets.SSH_USER_NEW }}/dev/
             cd /home/${{ secrets.SSH_USER_NEW }}/dev/
