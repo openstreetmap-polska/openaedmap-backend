@@ -30,9 +30,9 @@ jobs:
         run: |
           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
             set -e
+            cd /home/${{ secrets.SSH_USER_NEW }}/dev/
             ls -la
             mkdir -p .data-files
             mkdir -p .db-data
-            cd /home/${{ secrets.SSH_USER_NEW }}/dev/
             PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
           EOF
