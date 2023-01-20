@@ -22,11 +22,13 @@ jobs:
       - uses: actions/checkout@v3
       - name: Setup env
         run: |
-          echo ${{ secrets.env }} > .env
+          echo "$MY_SECRET" > .env
+        env:
+          MY_SECRET: ${{secrets.env}}
       - name: Copy repository
         run: |
           scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./* ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
-          scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./.env ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev/.env
+          scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./.env ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
       - name: Run deploy script on host
         run: |
           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
