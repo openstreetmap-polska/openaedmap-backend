@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 
 # Create user (app) to avoid using root
 RUN mkdir -p /home/app
-RUN groupadd -r app && useradd -r -g app -d /home/app -s /sbin/nologin app
+RUN groupadd -r app && useradd -r -g app -d /home/app app
 
 ENV HOME=/home/app
 ENV APP_HOME=/home/app/backend
