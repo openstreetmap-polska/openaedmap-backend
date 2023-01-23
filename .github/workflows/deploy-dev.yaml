@@ -7,11 +7,51 @@ on:
     paths-ignore:
       - '*.md'
 
+# jobs:
+#   deploy:
+#     name: Deploy dev
+#     runs-on: ubuntu-latest
+#     environment: dev
+#     steps:
+#       - name: Install SSH Key
+#         uses: kielabokkie/ssh-key-and-known-hosts-action@v1
+#         with:
+#           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+#           ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
+#           ssh-port: ${{ secrets.SSH_HOST_NEW_PORT }}
+#       - uses: actions/checkout@v3
+#       - name: Setup env
+#         run: |
+#           echo "$MY_SECRET" > .env
+#         env:
+#           MY_SECRET: ${{secrets.env}}
+#       - name: Copy repository
+#         run: |
+#           scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./* ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
+#           scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./.env ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
+#       - name: Run deploy script on host
+#         run: |
+#           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
+#             set -e
+#             cd /home/${{ secrets.SSH_USER_NEW }}/dev/
+#             ls -la
+#             mkdir -p .data-files
+#             mkdir -p .db-data
+#             PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
+#           EOF
+# name: deploy-dev
+
+# on:
+#   push:
+#     branches:
+#       - dev
+#     paths-ignore:
+#       - '*.md'
+
 jobs:
   deploy:
     name: Deploy dev
     runs-on: ubuntu-latest
-    environment: dev
     steps:
       - name: Install SSH Key
         uses: kielabokkie/ssh-key-and-known-hosts-action@v1
@@ -19,23 +59,12 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           ssh-host: ${{ secrets.SSH_HOST_NEW_IP }}
           ssh-port: ${{ secrets.SSH_HOST_NEW_PORT }}
-      - uses: actions/checkout@v3
-      - name: Setup env
-        run: |
-          echo "$MY_SECRET" > .env
-        env:
-          MY_SECRET: ${{secrets.env}}
-      - name: Copy repository
-        run: |
-          scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./* ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
-          scp -rp -P${{ secrets.SSH_HOST_NEW_PORT }} ./.env ${{ secrets.SSH_USER_NEW }}@${{ secrets.SSH_HOST_NEW_IP }}:~/dev
       - name: Run deploy script on host
         run: |
           ssh -p ${{ secrets.SSH_HOST_NEW_PORT }} -l ${{ secrets.SSH_USER_NEW }} ${{ secrets.SSH_HOST_NEW_IP }} << EOF
             set -e
             cd /home/${{ secrets.SSH_USER_NEW }}/dev/
-            ls -la
-            mkdir -p .data-files
-            mkdir -p .db-data
+            git fetch
+            git checkout origin/dev
             PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
           EOF
