@@ -65,6 +65,6 @@ jobs:
             set -e
             cd /home/${{ secrets.SSH_USER_NEW }}/dev/
             git fetch
-            git checkout origin/dev
+            git checkout origin/dev#modifypipeline
             PORT=6789 docker-compose -f docker-compose-prod.yml -p prod_develop up -d --build
           EOF
