@@ -24,6 +24,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             LIMIT 100000
             FOR UPDATE SKIP LOCKED
         ),
+
         updated_tiles(z, x, y) as (
             INSERT INTO tiles
                 SELECT z, x, y, mvt(z, x, y) FROM tiles_to_update
