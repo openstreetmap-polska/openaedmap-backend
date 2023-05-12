@@ -8,6 +8,35 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+TAGS_EXPORTED = {
+    "access",
+    "check_date",
+    "description",
+    "emergency",
+    "emergency:phone",
+    "indoor",
+    "level",
+    "locked",
+    "location",
+    "manufacturer",
+    "model",
+    "name",
+    "opening_hours",
+    "operator",
+    "phone",
+    "survey:date",
+    "wheelchair",
+}
+TAGS_PREFIX_EXPORTED = [
+    "addr:",
+    "defibrillator",
+    "image",
+    "note",
+    "ref",
+    "source",
+]
+
+
 @dataclass(frozen=True)
 class ExportedNode:
     node_id: int
@@ -26,8 +55,15 @@ class ExportedNode:
             "properties": {
                 "@osm_type": "node",
                 "@osm_id": self.node_id,
-                **self.tags,
+                **self._filtered_tags(),
             },
+        }
+
+    def _filtered_tags(self) -> dict:
+        return {
+            key: value
+            for key, value in self.tags.items()
+            if key in TAGS_EXPORTED or any(map(lambda prefix: key.startswith(prefix), TAGS_PREFIX_EXPORTED))
         }
 
 
@@ -39,6 +75,7 @@ def generate_geojson(data: list[ExportedNode]) -> dict:
             for node in data
         ]
     }
+
 
 def save_geojson_file(file_path: str | Path, data: list[ExportedNode] | dict | None) -> None:
     logger.info(f"Exporting file: {file_path}")
