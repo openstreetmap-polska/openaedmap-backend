@@ -11,12 +11,14 @@ from fastapi_utils.tasks import repeat_every
 from backend.api.v1.api import api_router
 from backend.core.config import settings
 from backend.cron_functions import (
-    process_expired_tiles_queue, load_changes,
+    process_expired_tiles_queue,
+    load_changes,
     generate_data_files_for_countries_with_data,
     queue_reload_of_all_tiles,
 )
 from backend.init_functions import (
-    init_countries, load_osm_nodes_if_db_empty,
+    init_countries,
+    load_osm_nodes_if_db_empty,
     create_all_tiles,
     generate_data_files_for_all_countries,
 )
@@ -98,6 +100,8 @@ def cron_generate_data_files_for_countries_with_data() -> None:
 
 
 # to mitigate potential errors in update logic
-@repeat_every(seconds=timedelta(days=1).total_seconds(), wait_first=True, logger=cron_logger)
+@repeat_every(
+    seconds=timedelta(days=1).total_seconds(), wait_first=True, logger=cron_logger
+)
 def cron_queue_reload_of_all_tiles() -> None:
     queue_reload_of_all_tiles(cron_logger)

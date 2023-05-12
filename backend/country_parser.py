@@ -26,18 +26,17 @@ class Country:
 
 
 def parse_feature(feature: Feature) -> Optional[Country]:
-    if (
-        feature.properties["ISO_A2"] == "-99"
-        and (
-            feature.properties["ISO_A2_EH"] == "BR"
-            or
-            (feature.properties["ISO_A2_EH"] == "GA" and feature.properties["NAME"] != "United Kingdom")
+    if feature.properties["ISO_A2"] == "-99" and (
+        feature.properties["ISO_A2_EH"] == "BR"
+        or (
+            feature.properties["ISO_A2_EH"] == "GA"
+            and feature.properties["NAME"] != "United Kingdom"
         )
     ):
         # duplicates/errors in Natural Earth dataset
         logger.warning(f"Ignoring feature with properties: {feature.properties}")
         return None
-    country_code: str = feature.properties['ISO_A2_EH']
+    country_code: str = feature.properties["ISO_A2_EH"]
     if feature.properties["NAME"] == "United Kingdom":
         country_code = "GB"
     elif country_code == "-99":
@@ -47,18 +46,29 @@ def parse_feature(feature: Feature) -> Optional[Country]:
             logger.warning(f"Missing ISO Code for feature: {feature.properties}")
             return None
     wkt_geometry: str = geometry.shape(feature.geometry).wkt
-    label_point: str = geometry.shape({
-        "type": "Point", "coordinates": [feature.properties.get("LABEL_X"), feature.properties.get("LABEL_Y")]
-    }).wkt
+    label_point: str = geometry.shape(
+        {
+            "type": "Point",
+            "coordinates": [
+                feature.properties.get("LABEL_X"),
+                feature.properties.get("LABEL_Y"),
+            ],
+        }
+    ).wkt
     country_names: Dict[str, str] = {}
     for k, v in feature.properties.items():
-        if k.startswith('NAME_'):
-            language_code = k.split('_')[1]
+        if k.startswith("NAME_"):
+            language_code = k.split("_")[1]
             if len(language_code) == 2:
                 country_names[language_code] = v
-        elif k == 'NAME':
-            country_names['default'] = v
-    return Country(country_code=country_code, geometry=wkt_geometry, country_names=country_names, label_point=label_point)
+        elif k == "NAME":
+            country_names["default"] = v
+    return Country(
+        country_code=country_code,
+        geometry=wkt_geometry,
+        country_names=country_names,
+        label_point=label_point,
+    )
 
 
 def parse_countries(data_url: str | Path = DATA_URL) -> Generator[Country, None, None]:
@@ -70,13 +80,19 @@ def parse_countries(data_url: str | Path = DATA_URL) -> Generator[Country, None,
         data: dict = raw.json()
         logger.info("Data downloaded successfully.")
     else:
-        logger.info(f"Reading data from local filesystem using provided path: {url} ...")
-        raw = open(url, 'r', encoding='utf-8').read()
+        logger.info(
+            f"Reading data from local filesystem using provided path: {url} ..."
+        )
+        raw = open(url, "r", encoding="utf-8").read()
         data: dict = json.loads(raw)
         logger.info("Read data from filesystem.")
 
-    for idx, feature in enumerate(data['features']):
-        logger.debug(f"Parsing record no: {idx} with properties: {feature['properties']}")
-        feature = parse_feature(Feature(properties=feature['properties'], geometry=feature['geometry']))
+    for idx, feature in enumerate(data["features"]):
+        logger.debug(
+            f"Parsing record no: {idx} with properties: {feature['properties']}"
+        )
+        feature = parse_feature(
+            Feature(properties=feature["properties"], geometry=feature["geometry"])
+        )
         if feature is not None:
             yield feature

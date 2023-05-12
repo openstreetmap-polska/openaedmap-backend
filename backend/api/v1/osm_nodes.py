@@ -13,7 +13,7 @@ from backend.api.deps import get_db
 router = APIRouter()
 
 
-@router.get('/node/{node_id}')
+@router.get("/node/{node_id}")
 async def osm_node(
     node_id: int = Path(description="Id of OSM Node", gt=0),
     db: Session = Depends(get_db),
@@ -25,7 +25,9 @@ async def osm_node(
     if node_data is None:
         return Response(status_code=404)
     else:
-        create_osm_node_view(db, OsmNodesViewsCreate(node_id=node_id, seen_at=request_receive_dt))
+        create_osm_node_view(
+            db, OsmNodesViewsCreate(node_id=node_id, seen_at=request_receive_dt)
+        )
         response_data = {
             "version": "0.6",
             "copyright": "OpenStreetMap and contributors",
@@ -44,6 +46,6 @@ async def osm_node(
                     "uid": None,
                     "tags": node_data.tags,
                 }
-            ]
+            ],
         }
         return response_data

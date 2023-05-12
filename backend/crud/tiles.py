@@ -15,7 +15,9 @@ def create_tile(db: Session, tile: TilesCreate) -> Tiles:
 
 
 def generate_tile(z: int, x: int, y: int, db: Session) -> bytes:
-    return db.scalar("SELECT mvt(:z, :x, :y)", params={"z": z, "x": x, "y": y}).tobytes()
+    return db.scalar(
+        "SELECT mvt(:z, :x, :y)", params={"z": z, "x": x, "y": y}
+    ).tobytes()
 
 
 def get_vector_tile(z: int, x: int, y: int, db: Session) -> bytes:

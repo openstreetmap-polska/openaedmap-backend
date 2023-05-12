@@ -40,6 +40,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             (SELECT COUNT(*) FROM updated_tiles) as number_of_updated_tiles,
             (SELECT COUNT(*) FROM deleted_queue_entries) as deleted_queue_entries
     """
+
     def run_level(zoom: int, older_than: datetime.datetime) -> None:
         with db.begin():
             result = db.execute(query, params={"zoom": zoom, "older_than": older_than})
@@ -54,7 +55,9 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             ts = datetime.datetime.utcnow() - tiles_refresh_interval[z]
             run_level(zoom=z, older_than=ts)
     process_end = time.perf_counter()
-    logger.info(f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds")
+    logger.info(
+        f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds"
+    )
 
 
 def queue_reload_of_all_tiles(logger: Logger) -> None:
@@ -70,7 +73,8 @@ def load_changes(logger: Logger) -> None:
     process_start = time.perf_counter()
     with SessionLocal() as db:
         with db.begin():
-            db.execute(statement="""
+            db.execute(
+                statement="""
                 CREATE TEMPORARY TABLE temp_node_changes (
                     change_type varchar,
                     node_id bigint,
@@ -83,22 +87,31 @@ def load_changes(logger: Logger) -> None:
                     tags jsonb,
                     version_timestamp timestamp with time zone
                 );
-            """)
+            """
+            )
             current_meta: Metadata = db.query(Metadata).one()
-            logger.info(f"Current metadata: "
-                        f"last_processed_sequence={current_meta.last_processed_sequence}, "
-                        f"last_updated={current_meta.last_updated}")
+            logger.info(
+                f"Current metadata: "
+                f"last_processed_sequence={current_meta.last_processed_sequence}, "
+                f"last_updated={current_meta.last_updated}"
+            )
             new_seq = find_newest_replication_sequence()
-            for change in changes_between_seq(start_sequence=current_meta.last_processed_sequence, end_sequence=new_seq.number):
+            for change in changes_between_seq(
+                start_sequence=current_meta.last_processed_sequence,
+                end_sequence=new_seq.number,
+            ):
                 db.execute(
                     statement="""
                         INSERT INTO temp_node_changes VALUES
                         (:type, :node_id, :version, :uid, :user, :changeset, :latitude, :longitude, :tags, :version_timestamp);""",
-                    params=change.as_params_dict()
+                    params=change.as_params_dict(),
                 )
-            count = db.execute(statement="SELECT COUNT(*) FROM temp_node_changes;").first()[0]
+            count = db.execute(
+                statement="SELECT COUNT(*) FROM temp_node_changes;"
+            ).first()[0]
             logger.info(f"Inserted: {count} rows to temp table.")
-            result = db.execute("""
+            result = db.execute(
+                """
             WITH
             changes as (
                 SELECT *, ROW_NUMBER() OVER(PARTITION BY node_id ORDER BY version DESC) as rn
@@ -266,18 +279,27 @@ def load_changes(logger: Logger) -> None:
                 (SELECT COUNT(*) FROM country_code_counts) as db_country_code_counts,
                 (SELECT COUNT(*) FROM update_countries) as db_updated_countries,
                 (SELECT COUNT(*) FROM insert_expired_tiles_to_queue) as expired_tiles_added_to_queue
-            """)
+            """
+            )
             for k, v in zip(result.keys(), result.first() or []):
                 logger.info(f"Load result - {k}: {v}")
-            db.execute("""
+            db.execute(
+                """
                 UPDATE metadata
                 SET (total_count, last_updated, last_processed_sequence) = (
                  (SELECT COUNT(*) FROM osm_nodes), :last_updated, :last_processed_sequence
                 )
-            """, params={"last_updated": new_seq.timestamp.isoformat(), "last_processed_sequence": new_seq.formatted})
+            """,
+                params={
+                    "last_updated": new_seq.timestamp.isoformat(),
+                    "last_processed_sequence": new_seq.formatted,
+                },
+            )
             db.execute("DROP TABLE IF EXISTS temp_node_changes;")
             logger.info("Updated data. Committing...")
-    logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
+    logger.info(
+        f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}"
+    )
     process_end = time.perf_counter()
     logger.info(f"Update took: {round(process_end - process_start, 4)} seconds")
 
@@ -287,17 +309,23 @@ def generate_data_files_for_countries_with_data(logger: Logger) -> None:
     logger.info("Getting data out of db.")
     process_start = time.perf_counter()
     with SessionLocal() as db:
-        nodes = db.query(
-            OsmNodes.node_id,
-            OsmNodes.country_code,
-            OsmNodes.tags,
-            func.ST_X(OsmNodes.geometry),
-            func.ST_Y(OsmNodes.geometry),
-        ).order_by(nullslast(OsmNodes.country_code.asc())).all()
+        nodes = (
+            db.query(
+                OsmNodes.node_id,
+                OsmNodes.country_code,
+                OsmNodes.tags,
+                func.ST_X(OsmNodes.geometry),
+                func.ST_Y(OsmNodes.geometry),
+            )
+            .order_by(nullslast(OsmNodes.country_code.asc()))
+            .all()
+        )
     world_data = [ExportedNode(*n) for n in nodes]
     process_end = time.perf_counter()
     process_time = process_end - process_start  # in seconds
-    logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
+    logger.info(
+        f"Finished getting data out of db. It took: {round(process_time, 4)} seconds"
+    )
     save_geojson_file(f"/data/world.geojson", world_data)
     buffer: list[ExportedNode] = []
     current_country = world_data[0].country_code

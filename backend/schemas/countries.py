@@ -9,10 +9,10 @@ class CountriesBase(BaseModel):
     geometry: str
     country_names: dict
 
-    @validator('feature_count')
+    @validator("feature_count")
     def total_count_gte_zero(cls, val: int) -> int:
         if val < 0:
-            raise ValueError('feature_count must be gte 0')
+            raise ValueError("feature_count must be gte 0")
 
         return val
 

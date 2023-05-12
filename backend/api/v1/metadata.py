@@ -8,6 +8,6 @@ from backend.models import Metadata
 router = APIRouter()
 
 
-@router.get('/metadata')
+@router.get("/metadata")
 async def metadata(db: Session = Depends(get_db)) -> Metadata:
     return get_metadata(db)

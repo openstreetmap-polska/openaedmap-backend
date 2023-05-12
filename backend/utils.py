@@ -14,5 +14,7 @@ def print_runtime(logger: Logger) -> Callable:
             duration = end_time - start_time
             logger.info(f"Function {f.__name__!r} took: {duration:.4f} seconds.")
             return result
+
         return wrapped
+
     return decorator

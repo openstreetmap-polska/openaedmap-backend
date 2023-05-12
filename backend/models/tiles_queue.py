@@ -11,10 +11,8 @@ from backend.database.base import Base
 
 
 class TilesQueue(Base):
-    __tablename__ = 'tiles_queue'
-    __table_args__ = (
-        PrimaryKeyConstraint('z', 'x', 'y'),
-    )
+    __tablename__ = "tiles_queue"
+    __table_args__ = (PrimaryKeyConstraint("z", "x", "y"),)
     z = Column(SMALLINT, nullable=False)
     x = Column(Integer, nullable=False)
     y = Column(Integer, nullable=False)

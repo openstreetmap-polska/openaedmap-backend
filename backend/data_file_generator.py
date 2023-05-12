@@ -50,7 +50,7 @@ class ExportedNode:
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                "coordinates": [self.longitude, self.latitude]
+                "coordinates": [self.longitude, self.latitude],
             },
             "properties": {
                 "@osm_type": "node",
@@ -63,21 +63,21 @@ class ExportedNode:
         return {
             key: value
             for key, value in self.tags.items()
-            if key in TAGS_EXPORTED or any(map(lambda prefix: key.startswith(prefix), TAGS_PREFIX_EXPORTED))
+            if key in TAGS_EXPORTED
+            or any(map(lambda prefix: key.startswith(prefix), TAGS_PREFIX_EXPORTED))
         }
 
 
 def generate_geojson(data: list[ExportedNode]) -> dict:
     return {
         "type": "FeatureCollection",
-        "features": [
-            node.as_geojson_feature()
-            for node in data
-        ]
+        "features": [node.as_geojson_feature() for node in data],
     }
 
 
-def save_geojson_file(file_path: str | Path, data: list[ExportedNode] | dict | None) -> None:
+def save_geojson_file(
+    file_path: str | Path, data: list[ExportedNode] | dict | None
+) -> None:
     logger.info(f"Exporting file: {file_path}")
     process_start = time.perf_counter()
     with open(file_path, "w", encoding="utf-8") as fp:
@@ -87,11 +87,15 @@ def save_geojson_file(file_path: str | Path, data: list[ExportedNode] | dict | N
             case list():
                 country_geojson = generate_geojson(data)
             case None:
-                logger.info(f"No data provided for file: {file_path} it will be saved as empty geojson file.")
+                logger.info(
+                    f"No data provided for file: {file_path} it will be saved as empty geojson file."
+                )
                 country_geojson = generate_geojson([])
             case _:
                 raise TypeError(f"Unexpected value of data attribute: {data}")
         json.dump(country_geojson, fp)
     process_end = time.perf_counter()
     process_time = process_end - process_start  # in seconds
-    logger.info(f"Finished exporting file: {file_path} it took: {round(process_time, 4)} seconds")
+    logger.info(
+        f"Finished exporting file: {file_path} it took: {round(process_time, 4)} seconds"
+    )
