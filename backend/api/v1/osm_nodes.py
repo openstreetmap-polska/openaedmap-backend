@@ -13,6 +13,27 @@ from backend.api.deps import get_db
 router = APIRouter()
 
 
+def _parse_image_tags(tags: dict) -> list[dict]:
+    images = []
+
+    def check_image_url(url: str) -> bool:
+        return url.startswith("http://") or url.startswith("https://")
+
+    for image_tag in filter(lambda tag: tag.startswith("image"), tags.keys()):
+        for image_url in tags[image_tag].split(";"):
+            if check_image_url(image_url):
+                images.append(dict(url=image_url))
+    if "wikimedia_commons" in tags:
+        wikimedia_commons_tag = tags["wikimedia_commons"]
+        if wikimedia_commons_tag.startswith("File:"):
+            wikimedia_commons_url = (
+                "https://commons.wikimedia.org/wiki/" + wikimedia_commons_tag
+            )
+            if check_image_url(wikimedia_commons_url):
+                images.append(dict(url=wikimedia_commons_url))
+    return images
+
+
 @router.get("/node/{node_id}")
 async def osm_node(
     node_id: int = Path(description="Id of OSM Node", gt=0),
@@ -45,6 +66,7 @@ async def osm_node(
                     "user": None,
                     "uid": None,
                     "tags": node_data.tags,
+                    "images": _parse_image_tags(node_data.tags),
                 }
             ],
         }
