@@ -18,7 +18,8 @@ async def vector_tile(
     db: Session = Depends(get_db),
 ) -> Response:
     """Get single vector tile.
-    Usually you provide template to map library like https://host/tile/{z}/{x}/{y}.mvt and it figures out the rest."""
+    Usually you provide template to map library like https://host/tile/{z}/{x}/{y}.mvt and it figures out the rest.
+    """
 
     max_age = max(
         tiles_refresh_interval.get(z, timedelta(seconds=60)), timedelta(seconds=60)
