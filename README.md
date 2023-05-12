@@ -48,7 +48,7 @@ PORT=80 docker-compose -f docker-compose-prod.yml -p prod up -d
 
 ### Log into database
 ```
-docker exec -it dev_db_1 psql -h localhost -U <user from .env> -d <db from .env>
+docker exec -it dev-db-1 psql -h localhost -U <user from .env> -d <db from .env>
 ```
 
 ### Migrations
@@ -56,7 +56,7 @@ docker exec -it dev_db_1 psql -h localhost -U <user from .env> -d <db from .env>
 After changing models
 connect to container:
 ```
-docker exec -it dev_backend_1 bash
+docker exec -it dev-backend-1 bash
 ```
 and run:
 ```
