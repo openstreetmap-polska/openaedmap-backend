@@ -15,6 +15,7 @@ from backend.schemas.countries import CountriesCreate
 
 logger = logging.getLogger(__name__)
 
+
 def init_countries() -> None:
     with SessionLocal() as db:
         if db.query(Countries).first() is None:
@@ -24,7 +25,9 @@ def init_countries() -> None:
             process_start = time.perf_counter()
             with db.begin():
                 for c in parse_countries():
-                    country = Countries(**CountriesCreate(**c.__dict__).dict())  # todo: find a way to make this not terrible
+                    country = Countries(
+                        **CountriesCreate(**c.__dict__).dict()
+                    )  # todo: find a way to make this not terrible
                     db.add(country)
                     counter += 1
             process_end = time.perf_counter()
@@ -42,7 +45,8 @@ def load_osm_nodes_if_db_empty() -> None:
             process_start = time.perf_counter()
             replication_seq = estimated_replication_sequence(timedelta(minutes=-15))
             with db.begin():
-                db.execute(statement="""
+                db.execute(
+                    statement="""
                     CREATE TEMPORARY TABLE temp_nodes (
                         node_id bigint,
                         version int,
@@ -54,17 +58,21 @@ def load_osm_nodes_if_db_empty() -> None:
                         tags jsonb,
                         version_timestamp timestamp with time zone
                     );
-                """)
+                """
+                )
                 for n in full_list_from_overpass():
                     db.execute(
                         statement="""
                             INSERT INTO temp_nodes VALUES
                             (:node_id, :version, :uid, :user, :changeset, :latitude, :longitude, :tags, :version_timestamp);""",
-                        params=n.as_params_dict()
+                        params=n.as_params_dict(),
                     )
-                count = db.execute(statement="SELECT COUNT(*) FROM temp_nodes;").first()[0]
+                count = db.execute(
+                    statement="SELECT COUNT(*) FROM temp_nodes;"
+                ).first()[0]
                 logger.info(f"Inserted: {count} rows to temp table.")
-                result = db.execute(statement="""
+                result = db.execute(
+                    statement="""
                 WITH
                 updated_country_codes(country_code) as (
                     INSERT INTO osm_nodes(node_id, version, creator_id, added_in_changeset, country_code, geometry, tags, version_1_ts, version_last_ts)
@@ -114,7 +122,12 @@ def load_osm_nodes_if_db_empty() -> None:
                     (SELECT COUNT(*) FROM apply_updates) as updated_countries,
                     (SELECT COUNT(*) FROM insert_metadata) as inserted_metadata
                 ;
-                """, params={"estimated_sequence": replication_seq.formatted, "estimated_ts": replication_seq.timestamp})
+                """,
+                    params={
+                        "estimated_sequence": replication_seq.formatted,
+                        "estimated_ts": replication_seq.timestamp,
+                    },
+                )
                 result = result.first()
                 for k, v in zip(result.keys(), result):
                     logger.info(f"Load result - {k}: {v}")
@@ -157,24 +170,32 @@ def create_all_tiles() -> None:
 
 def generate_data_files_for_all_countries() -> None:
     if len(os.listdir("/data")) > 0:
-        logger.info("There are files present in /data dir. Skipping generating all data files.")
+        logger.info(
+            "There are files present in /data dir. Skipping generating all data files."
+        )
     else:
         logger.info("Generating data files...")
         logger.info("Getting data out of db.")
         process_start = time.perf_counter()
         with SessionLocal() as db:
             country_codes = set([c[0] for c in db.query(Countries.country_code)])
-            nodes = db.query(
-                OsmNodes.node_id,
-                OsmNodes.country_code,
-                OsmNodes.tags,
-                func.ST_X(OsmNodes.geometry),
-                func.ST_Y(OsmNodes.geometry),
-            ).order_by(nullslast(OsmNodes.country_code.asc())).all()
+            nodes = (
+                db.query(
+                    OsmNodes.node_id,
+                    OsmNodes.country_code,
+                    OsmNodes.tags,
+                    func.ST_X(OsmNodes.geometry),
+                    func.ST_Y(OsmNodes.geometry),
+                )
+                .order_by(nullslast(OsmNodes.country_code.asc()))
+                .all()
+            )
         world_data = [ExportedNode(*n) for n in nodes]
         process_end = time.perf_counter()
         process_time = process_end - process_start  # in seconds
-        logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
+        logger.info(
+            f"Finished getting data out of db. It took: {round(process_time, 4)} seconds"
+        )
         save_geojson_file(f"/data/world.geojson", world_data)
         buffer: list[ExportedNode] = []
         current_country = world_data[0].country_code

@@ -27,7 +27,7 @@ class CountryNames:
 def get_countries_without_geom(db: Session) -> List[CountryInfo]:
     query = db.query(
         Countries.country_code,
-        Countries.country_names['default'],
+        Countries.country_names["default"],
         Countries.feature_count,
         func.concat("/data/", Countries.country_code, ".geojson"),
     )
@@ -40,14 +40,18 @@ def get_countries_geojson(country_code: Optional[str], db: Session) -> dict:
         Countries.country_names["default"].label("country_name"),
         Countries.feature_count,
         func.concat("/data/", Countries.country_code, ".geojson").label("data_path"),
-        Countries.geometry
+        Countries.geometry,
     )
     if country_code:
         query = query.filter(Countries.country_code == country_code.upper())
     return db.scalar(
         func.json_build_object(
-            "type", "FeatureCollection",
-            "features", func.json_agg(func.ST_AsGeoJSON(query.subquery(), "geometry", 6).cast(JSONB))
+            "type",
+            "FeatureCollection",
+            "features",
+            func.json_agg(
+                func.ST_AsGeoJSON(query.subquery(), "geometry", 6).cast(JSONB)
+            ),
         )
     )
 

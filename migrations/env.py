@@ -33,7 +33,7 @@ def exclude_tables_from_config(config_):
         return tables_.split(",") or []
 
 
-exclude_tables = exclude_tables_from_config(config.get_section('alembic:exclude'))
+exclude_tables = exclude_tables_from_config(config.get_section("alembic:exclude"))
 
 
 def include_object(object, name, type_, reflected, compare_to):
@@ -60,7 +60,7 @@ def run_migrations_offline():
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={'paramstyle': 'named'},
+        dialect_opts={"paramstyle": "named"},
         compare_type=True,
         process_revision_directives=alembic_helpers.writer,
         render_item=alembic_helpers.render_item,
@@ -78,11 +78,9 @@ def run_migrations_online():
 
     """
     configuration = config.get_section(config.config_ini_section)
-    configuration['sqlalchemy.url'] = DATABASE_URL
+    configuration["sqlalchemy.url"] = DATABASE_URL
     connectable = engine_from_config(
-        configuration,
-        prefix='sqlalchemy.',
-        poolclass=pool.NullPool
+        configuration, prefix="sqlalchemy.", poolclass=pool.NullPool
     )
 
     with connectable.connect() as connection:

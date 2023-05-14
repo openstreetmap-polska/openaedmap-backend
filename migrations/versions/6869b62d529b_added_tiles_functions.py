@@ -10,14 +10,15 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '6869b62d529b'
-down_revision = 'e9c0b3b9c2cb'
+revision = "6869b62d529b"
+down_revision = "e9c0b3b9c2cb"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION abbreviated (IN number bigint) RETURNS text
         AS  $$
             SELECT CASE
@@ -26,8 +27,10 @@ def upgrade():
               ELSE number::text
             END
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt_unclustered (IN bbox geometry) RETURNS bytea
         AS  $$
         
@@ -44,8 +47,10 @@ def upgrade():
                 FROM nodes
         
         $$ LANGUAGE SQL STABLE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt_clustered (IN bbox geometry, IN cluster_range double precision) RETURNS bytea
         AS  $$
         
@@ -88,8 +93,10 @@ def upgrade():
                 FROM clustered
         
         $$ LANGUAGE SQL STABLE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt_countries (IN bbox geometry) RETURNS bytea
         AS  $$
         
@@ -129,8 +136,10 @@ def upgrade():
                 FROM layers
         
         $$ LANGUAGE SQL STABLE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt (IN z int, IN x int, IN y int) RETURNS bytea
         AS $$
             DECLARE
@@ -163,7 +172,8 @@ def upgrade():
                 end if;
             END;
         $$ LANGUAGE plpgsql STABLE ;
-    """)
+    """
+    )
 
 
 def downgrade():

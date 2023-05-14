@@ -41,6 +41,7 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             (SELECT COUNT(*) FROM updated_tiles) as number_of_updated_tiles,
             (SELECT COUNT(*) FROM deleted_queue_entries) as deleted_queue_entries
     """
+
     def run_level(zoom: int, older_than: datetime.datetime) -> None:
         with db.begin():
             result = db.execute(query, params={"zoom": zoom, "older_than": older_than})
@@ -55,7 +56,9 @@ def process_expired_tiles_queue(logger: Logger) -> None:
             ts = datetime.datetime.utcnow() - tiles_refresh_interval[z]
             run_level(zoom=z, older_than=ts)
     process_end = time.perf_counter()
-    logger.info(f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds")
+    logger.info(
+        f"Processing expired tiles queue took: {round(process_end - process_start, 4)} seconds"
+    )
 
 
 def queue_reload_of_all_tiles(logger: Logger) -> None:
@@ -71,22 +74,45 @@ def load_changes(logger: Logger) -> None:
     process_start = time.perf_counter()
     with SessionLocal() as db:
         with db.begin():
-            current_meta: Metadata = db.query(Metadata).one()
-            logger.info(f"Current metadata: "
-                        f"last_processed_sequence={current_meta.last_processed_sequence}, "
-                        f"last_updated={current_meta.last_updated}")
-            new_seq = find_newest_replication_sequence()
             db.execute(
-                insert(TempNodeChanges.__table__),
-                [
-                    change.as_params_dict()
-                    for change in changes_between_seq(
-                        start_sequence=current_meta.last_processed_sequence, end_sequence=new_seq.number, skip_first=True
-                    )
-                ]
+                statement="""
+                CREATE TEMPORARY TABLE temp_node_changes (
+                    change_type varchar,
+                    node_id bigint,
+                    version int,
+                    uid int,
+                    "user" varchar,
+                    changeset int,
+                    latitude double precision,
+                    longitude double precision,
+                    tags jsonb,
+                    version_timestamp timestamp with time zone
+                );
+            """
             )
-            logger.info(f"Inserted: {db.query(TempNodeChanges).count()} rows to temp table.")
-            result = db.execute("""
+            current_meta: Metadata = db.query(Metadata).one()
+            logger.info(
+                f"Current metadata: "
+                f"last_processed_sequence={current_meta.last_processed_sequence}, "
+                f"last_updated={current_meta.last_updated}"
+            )
+            new_seq = find_newest_replication_sequence()
+            for change in changes_between_seq(
+                start_sequence=current_meta.last_processed_sequence,
+                end_sequence=new_seq.number,
+            ):
+                db.execute(
+                    statement="""
+                        INSERT INTO temp_node_changes VALUES
+                        (:type, :node_id, :version, :uid, :user, :changeset, :latitude, :longitude, :tags, :version_timestamp);""",
+                    params=change.as_params_dict(),
+                )
+            count = db.execute(
+                statement="SELECT COUNT(*) FROM temp_node_changes;"
+            ).first()[0]
+            logger.info(f"Inserted: {count} rows to temp table.")
+            result = db.execute(
+                """
             WITH
             -- raw data
             changes(
@@ -299,60 +325,61 @@ def load_changes(logger: Logger) -> None:
                 (SELECT COUNT(*) FROM update_countries) as db_updated_countries,
                 (SELECT COUNT(*) FROM insert_country_codes_to_queue) as inserted_country_codes_to_queue_to_gen_files,
                 (SELECT COUNT(*) FROM insert_expired_tiles_to_queue) as expired_tiles_added_to_queue
-            """)
+            """
+            )
             for k, v in zip(result.keys(), result.first() or []):
                 logger.info(f"Load result - {k}: {v}")
-            db.execute("""
+            db.execute(
+                """
                 UPDATE metadata
                 SET (total_count, last_updated, last_processed_sequence) = (
                     (SELECT COUNT(*) FROM osm_nodes), :last_updated, :last_processed_sequence
                 )
-            """, params={"last_updated": new_seq.timestamp.isoformat(), "last_processed_sequence": new_seq.formatted})
-            db.execute("DELETE FROM temp_node_changes")
+            """,
+                params={
+                    "last_updated": new_seq.timestamp.isoformat(),
+                    "last_processed_sequence": new_seq.formatted,
+                },
+            )
+            db.execute("DROP TABLE IF EXISTS temp_node_changes;")
             logger.info("Updated data. Committing...")
-    logger.info(f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}")
+    logger.info(
+        f"Commit done. Data up to: {new_seq.formatted} - {new_seq.timestamp.isoformat()}"
+    )
     process_end = time.perf_counter()
     logger.info(f"Update took: {round(process_end - process_start, 4)} seconds")
 
 
 def generate_data_files_for_countries_with_data(logger: Logger) -> None:
     with SessionLocal() as db:
-        codes = [x[0] for x in db.execute("SELECT country_code FROM countries_queue FOR UPDATE SKIP LOCKED").all()]
-        if len(codes) > 0:
-            db.commit()  # close previous transaction
-            with db.begin():
-                logger.info("Generating data files...")
-                logger.info("Getting data out of db.")
-                process_start = time.perf_counter()
-                nodes = db.query(
-                    OsmNodes.node_id,
-                    OsmNodes.country_code,
-                    OsmNodes.tags,
-                    func.ST_X(OsmNodes.geometry),
-                    func.ST_Y(OsmNodes.geometry),
-                ).order_by(nullslast(OsmNodes.country_code.asc())).all()
-                world_data = [ExportedNode(*n) for n in nodes]
-                process_end = time.perf_counter()
-                process_time = process_end - process_start  # in seconds
-                logger.info(f"Finished getting data out of db. It took: {round(process_time, 4)} seconds")
-                save_geojson_file(f"/data/world.geojson", world_data)
-                buffer: list[ExportedNode] = []
-                distinct_codes = set(codes)
-                starting_index = 0
-                while world_data[starting_index].country_code not in distinct_codes and starting_index < len(world_data) - 1:
-                    starting_index += 1
-                current_country = world_data[starting_index].country_code
-                for node in world_data[starting_index:]:
-                    if node.country_code is not None and node.country_code in distinct_codes:
-                        if node.country_code != current_country:
-                            save_geojson_file(f"/data/{current_country}.geojson", buffer)
-                            current_country = node.country_code
-                            buffer = []
-                        else:
-                            buffer.append(node)
-                if len(buffer) > 0:
-                    save_geojson_file(f"/data/{current_country}.geojson", buffer)
-                db.execute(sqlalchemy.text("DELETE FROM countries_queue WHERE country_code = ANY(:codes)"), params={"codes": list(distinct_codes)})
-            logger.info("Finished generating data files.")
-        else:
-            logger.info("No (unlocked) rows in countries_queue. Skipping writing files.")
+        nodes = (
+            db.query(
+                OsmNodes.node_id,
+                OsmNodes.country_code,
+                OsmNodes.tags,
+                func.ST_X(OsmNodes.geometry),
+                func.ST_Y(OsmNodes.geometry),
+            )
+            .order_by(nullslast(OsmNodes.country_code.asc()))
+            .all()
+        )
+    world_data = [ExportedNode(*n) for n in nodes]
+    process_end = time.perf_counter()
+    process_time = process_end - process_start  # in seconds
+    logger.info(
+        f"Finished getting data out of db. It took: {round(process_time, 4)} seconds"
+    )
+    save_geojson_file(f"/data/world.geojson", world_data)
+    buffer: list[ExportedNode] = []
+    current_country = world_data[0].country_code
+    for node in world_data:
+        if node.country_code is not None:
+            if node.country_code != current_country:
+                save_geojson_file(f"/data/{current_country}.geojson", buffer)
+                current_country = node.country_code
+                buffer = []
+            else:
+                buffer.append(node)
+    if len(buffer) > 0:
+        save_geojson_file(f"/data/{current_country}.geojson", buffer)
+    logger.info("Finished generating data files.")

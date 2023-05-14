@@ -13,21 +13,21 @@ class OsmNodesBase(BaseModel):
     geometry: str
     tags: Dict[str, str]
 
-    @validator('geometry', pre=True)
+    @validator("geometry", pre=True)
     def create_spatial_object(cls, val: str) -> WKTElement:
         return WKTElement(val, srid=4326)
 
-    @validator('country_code')
+    @validator("country_code")
     def country_code_len_eq_2(cls, val: Optional[str]) -> Optional[str]:
         if val is not None and len(val) != 2:
-            raise ValueError('country_code must be null or 2 character string')
+            raise ValueError("country_code must be null or 2 character string")
 
         return val
 
-    @validator('node_id')
+    @validator("node_id")
     def node_id_gte_zero(cls, val):
         if val < 0:
-            raise ValueError('node_id must be gte 0')
+            raise ValueError("node_id must be gte 0")
 
         return val
 

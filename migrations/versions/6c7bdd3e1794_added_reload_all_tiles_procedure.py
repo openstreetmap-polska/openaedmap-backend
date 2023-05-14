@@ -8,14 +8,15 @@ Create Date: 2022-12-25 23:26:27.284214
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = '6c7bdd3e1794'
-down_revision = '9e2034191715'
+revision = "6c7bdd3e1794"
+down_revision = "9e2034191715"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE PROCEDURE queue_reload_of_all_tiles()
         LANGUAGE SQL
         SET work_mem TO '512MB'
@@ -31,7 +32,8 @@ def upgrade():
             ON CONFLICT DO NOTHING
             ;
         END;
-    """)
+    """
+    )
 
 
 def downgrade():

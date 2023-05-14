@@ -29,7 +29,9 @@ out meta qt;
 REPLICATION_MINUTE_URL = "https://planet.osm.org/replication/minute/"
 
 
-def make_sure_val_is_simple(value: int | float | str | dict | datetime) -> int | float | str:
+def make_sure_val_is_simple(
+    value: int | float | str | dict | datetime,
+) -> int | float | str:
     match value:
         case dict():
             return json.dumps(value)
@@ -86,8 +88,7 @@ def send_request(url: str) -> Response:
 
 @print_runtime(logger)
 def full_list_from_overpass(
-    api_url: str = OVERPASS_URL,
-    api_query: str = OVERPASS_QUERY
+    api_url: str = OVERPASS_URL, api_query: str = OVERPASS_QUERY
 ) -> Generator[Node, None, None]:
     """Returns generator yielding data about all defibrillator nodes from Overpass API."""
 
@@ -138,10 +139,14 @@ def get_replication_sequence(url: str) -> ReplicationSequence:
     ts = data[2].split("=")[1]
     dt = datetime.fromisoformat(ts.replace("\\", "").replace("Z", ""))
 
-    return ReplicationSequence(timestamp=dt, number=int(seq), formatted=format_replication_sequence(seq))
+    return ReplicationSequence(
+        timestamp=dt, number=int(seq), formatted=format_replication_sequence(seq)
+    )
 
 
-def find_newest_replication_sequence(replication_url: str = REPLICATION_MINUTE_URL) -> ReplicationSequence:
+def find_newest_replication_sequence(
+    replication_url: str = REPLICATION_MINUTE_URL,
+) -> ReplicationSequence:
     """Checks what's the newest sequence number in OSM replication log."""
     url = urllib.parse.urljoin(replication_url, "state.txt")
     return get_replication_sequence(url)
@@ -157,7 +162,9 @@ def estimated_replication_sequence(delta: timedelta) -> ReplicationSequence:
     new_seq_formatted = format_replication_sequence(new_seq_num)
     new_seq_ts = newest_replication_sequence.timestamp + delta
 
-    return ReplicationSequence(timestamp=new_seq_ts, number=new_seq_num, formatted=new_seq_formatted)
+    return ReplicationSequence(
+        timestamp=new_seq_ts, number=new_seq_num, formatted=new_seq_formatted
+    )
 
 
 def contains_tag(element: Element, key: str, value: Optional[str]) -> bool:
@@ -193,7 +200,7 @@ def xml_to_node(xml_element: Element) -> Node:
         latitude=xml_element.getAttribute("lat"),
         longitude=xml_element.getAttribute("lon"),
         tags=tags,
-        version_timestamp=xml_element.getAttribute("timestamp")
+        version_timestamp=xml_element.getAttribute("timestamp"),
     )
 
 
@@ -208,14 +215,20 @@ def download_and_parse_change_file(url: str) -> Generator[Change, None, None]:
     counter = 0
     for event, element in event_stream:
         element: Element = element  # just for typing
-        if event == xml.dom.pulldom.START_ELEMENT and element.tagName in {"create", "modify", "delete"}:
+        if event == xml.dom.pulldom.START_ELEMENT and element.tagName in {
+            "create",
+            "modify",
+            "delete",
+        }:
             event_stream.expandNode(element)
             for child in element.childNodes:
                 child: Element = child  # for typing
                 if type(child) == Element and child.tagName == "node":
                     counter += 1
                     yield Change(type=element.tagName, element=xml_to_node(child))
-    logger.info(f"Finished parsing file downloaded from: {url} . There were {counter} nodes.")
+    logger.info(
+        f"Finished parsing file downloaded from: {url} . There were {counter} nodes."
+    )
 
 
 def changes_between_seq(

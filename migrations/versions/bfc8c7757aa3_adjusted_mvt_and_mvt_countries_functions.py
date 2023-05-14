@@ -10,14 +10,15 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bfc8c7757aa3'
-down_revision = 'c738991beb3c'
+revision = "bfc8c7757aa3"
+down_revision = "c738991beb3c"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt (IN z int, IN x int, IN y int) RETURNS bytea
         AS $$
             DECLARE
@@ -50,8 +51,10 @@ def upgrade():
                 end if;
             END;
         $$ LANGUAGE plpgsql STABLE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt_countries (IN bbox geometry) RETURNS bytea
         AS  $$
 
@@ -92,11 +95,13 @@ def upgrade():
                 FROM layers
 
         $$ LANGUAGE SQL STABLE ;
-    """)
+    """
+    )
 
 
 def downgrade():
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt (IN z int, IN x int, IN y int) RETURNS bytea
         AS $$
             DECLARE
@@ -129,8 +134,10 @@ def downgrade():
                 end if;
             END;
         $$ LANGUAGE plpgsql STABLE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION mvt_countries (IN bbox geometry) RETURNS bytea
         AS  $$
 
@@ -170,4 +177,5 @@ def downgrade():
                 FROM layers
 
         $$ LANGUAGE SQL STABLE ;
-    """)
+    """
+    )

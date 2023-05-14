@@ -15,13 +15,15 @@ from backend.crud.countries import (
 router = APIRouter()
 
 
-@router.get('/countries')
+@router.get("/countries")
 async def metadata(db: Session = Depends(get_db)) -> List[CountryInfo]:
     return get_countries_without_geom(db)
 
 
-@router.get('/countries.geojson')
-async def metadata(country_code: Optional[str] = None, db: Session = Depends(get_db)) -> dict:
+@router.get("/countries.geojson")
+async def metadata(
+    country_code: Optional[str] = None, db: Session = Depends(get_db)
+) -> dict:
     result = get_countries_geojson(country_code, db)
     if result:
         return result
@@ -29,6 +31,8 @@ async def metadata(country_code: Optional[str] = None, db: Session = Depends(get
         Response(status_code=404)
 
 
-@router.get('/countries/names')
-async def metadata(country_code: Optional[str] = None, db: Session = Depends(get_db)) -> List[CountryNames]:
+@router.get("/countries/names")
+async def metadata(
+    country_code: Optional[str] = None, db: Session = Depends(get_db)
+) -> List[CountryNames]:
     return get_countries_names(country_code, db)
