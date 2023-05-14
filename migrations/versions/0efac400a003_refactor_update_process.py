@@ -10,28 +10,30 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '0efac400a003'
-down_revision = 'a3688824e614'
+revision = "0efac400a003"
+down_revision = "a3688824e614"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.create_table('temp_node_changes',
-        sa.Column('change_type', sa.String(), nullable=False),
-        sa.Column('node_id', sa.BigInteger(), nullable=False),
-        sa.Column('version', sa.Integer(), nullable=False),
-        sa.Column('uid', sa.Integer(), nullable=True),
-        sa.Column('user', sa.String(), nullable=True),
-        sa.Column('changeset', sa.Integer(), nullable=True),
-        sa.Column('latitude', postgresql.DOUBLE_PRECISION(), nullable=True),
-        sa.Column('longitude', postgresql.DOUBLE_PRECISION(), nullable=True),
-        sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('version_timestamp', sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint('node_id', 'version'),
-        prefixes=['UNLOGGED']
+    op.create_table(
+        "temp_node_changes",
+        sa.Column("change_type", sa.String(), nullable=False),
+        sa.Column("node_id", sa.BigInteger(), nullable=False),
+        sa.Column("version", sa.Integer(), nullable=False),
+        sa.Column("uid", sa.Integer(), nullable=True),
+        sa.Column("user", sa.String(), nullable=True),
+        sa.Column("changeset", sa.Integer(), nullable=True),
+        sa.Column("latitude", postgresql.DOUBLE_PRECISION(), nullable=True),
+        sa.Column("longitude", postgresql.DOUBLE_PRECISION(), nullable=True),
+        sa.Column("tags", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("version_timestamp", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("node_id", "version"),
+        prefixes=["UNLOGGED"],
     )
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION get_tile_names (IN min_zoom int, IN max_zoom int) RETURNS TABLE (
             z smallint,
             x int,
@@ -45,8 +47,10 @@ def upgrade():
             SELECT zoom as z, x, y
             FROM zoom_levels, generate_series(0, (2^zoom-1)::int) as x, generate_series(0, (2^zoom-1)::int) as y;
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION get_tile_names_for_non_empty() RETURNS TABLE (
             z smallint,
             x int,
@@ -73,9 +77,13 @@ def upgrade():
             SELECT z, x, y FROM tiles_with_nodes
             ;
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE ;
-    """)
-    op.execute("DROP PROCEDURE IF EXISTS queue_reload_of_all_tiles(min_zoom int, max_zoom int)")
-    op.execute("""
+    """
+    )
+    op.execute(
+        "DROP PROCEDURE IF EXISTS queue_reload_of_all_tiles(min_zoom int, max_zoom int)"
+    )
+    op.execute(
+        """
         CREATE OR REPLACE PROCEDURE queue_reload_of_all_tiles()
         LANGUAGE SQL
         BEGIN ATOMIC
@@ -85,15 +93,17 @@ def upgrade():
             ON CONFLICT DO NOTHING
             ;
         END;
-    """)
+    """
+    )
     op.execute("TRUNCATE TABLE tiles")
     op.execute("TRUNCATE TABLE tiles_queue")
 
 
 def downgrade():
-    op.drop_table('temp_node_changes')
+    op.drop_table("temp_node_changes")
     op.execute("""DROP FUNCTION IF EXISTS queue_reload_of_all_tiles()""")
-    op.execute("""
+    op.execute(
+        """
         CREATE OR REPLACE PROCEDURE queue_reload_of_all_tiles(min_zoom int, max_zoom int)
         LANGUAGE SQL
         SET work_mem TO '512MB'
@@ -114,6 +124,9 @@ def downgrade():
             ON CONFLICT DO NOTHING
             ;
         END;
-    """)
-    op.execute("DROP FUNCTION IF EXISTS get_tile_names (IN min_zoom smallint, IN max_zoom smallint)")
+    """
+    )
+    op.execute(
+        "DROP FUNCTION IF EXISTS get_tile_names (IN min_zoom smallint, IN max_zoom smallint)"
+    )
     op.execute("DROP FUNCTION IF EXISTS get_tile_names_for_non_empty()")

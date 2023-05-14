@@ -71,10 +71,7 @@ class Change:
 
     def as_params_dict(self) -> dict:
         node = {k: make_sure_val_is_simple(v) for k, v in self.element.__dict__.items()}
-        return {
-            "change_type": self.type,
-            **node
-        }
+        return {"change_type": self.type, **node}
 
 
 @print_runtime(logger)
@@ -247,7 +244,9 @@ def changes_between_seq(
         end_sequence = replication_sequence_to_int(end_sequence)
 
     list_of_urls = [
-        urllib.parse.urljoin(replication_url, f"{format_replication_sequence(seq)}.osc.gz")
+        urllib.parse.urljoin(
+            replication_url, f"{format_replication_sequence(seq)}.osc.gz"
+        )
         for seq in range(start_sequence, end_sequence + 1)
     ]
     logger.info(f"There are: {len(list_of_urls)} OSC files to download.")

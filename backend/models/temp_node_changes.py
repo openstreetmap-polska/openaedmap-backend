@@ -13,10 +13,11 @@ from backend.database.base import Base
 
 class TempNodeChanges(Base):
     """Table for nodes staged in update process."""
-    __tablename__ = 'temp_node_changes'
+
+    __tablename__ = "temp_node_changes"
     __table_args__ = (
-        PrimaryKeyConstraint('node_id', 'version'),
-        {'prefixes': ['UNLOGGED']}
+        PrimaryKeyConstraint("node_id", "version"),
+        {"prefixes": ["UNLOGGED"]},
     )
     change_type = Column(String, nullable=False)
     node_id = Column(BigInteger, nullable=False)

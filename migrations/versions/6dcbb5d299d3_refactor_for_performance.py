@@ -9,15 +9,18 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = '6dcbb5d299d3'
-down_revision = 'cfe13af7230d'
+revision = "6dcbb5d299d3"
+down_revision = "cfe13af7230d"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    op.execute("CREATE TABLE countries_queue (countries_queue_id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, country_code text NOT NULL)")
-    op.execute("""
+    op.execute(
+        "CREATE TABLE countries_queue (countries_queue_id bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY, country_code text NOT NULL)"
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION get_tile_names (IN zoom smallint) RETURNS TABLE (
             z smallint,
             x int,
@@ -26,8 +29,10 @@ def upgrade():
         AS  $$
             SELECT zoom as z, x, y FROM generate_series(0, (2^zoom-1)::int) as x, generate_series(0, (2^zoom-1)::int) as y;
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE ;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE FUNCTION lon2tile(lon DOUBLE PRECISION, zoom INTEGER) RETURNS INTEGER AS $$
             SELECT FLOOR( (lon + 180) / 360 * (1 << zoom) )::INTEGER;
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
@@ -53,8 +58,10 @@ def upgrade():
             -- This code returns the coordinate of the _upper left_ (northwest-most)-point of the tile.
             SELECT CAST(x * 1.0 / (1 << zoom) * 360.0 - 180.0 AS double precision);
         $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE OR REPLACE PROCEDURE queue_reload_of_all_tiles(min_zoom int, max_zoom int)
         LANGUAGE SQL
         SET work_mem TO '512MB'
@@ -75,7 +82,8 @@ def upgrade():
             ON CONFLICT DO NOTHING
             ;
         END;
-    """)
+    """
+    )
     op.execute("DROP INDEX idx_tiles_bbox")
     op.execute("TRUNCATE TABLE tiles")
 
@@ -88,4 +96,6 @@ def downgrade():
     op.execute("DROP FUNCTION lat2tile")
     op.execute("DROP FUNCTION tile2lat")
     op.execute("DROP FUNCTION tile2lon")
-    op.execute("CREATE INDEX idx_tiles_bbox ON tiles USING GIST (ST_TileEnvelope(z, x, y))")
+    op.execute(
+        "CREATE INDEX idx_tiles_bbox ON tiles USING GIST (ST_TileEnvelope(z, x, y))"
+    )
