@@ -55,6 +55,7 @@ class WorkerState:
         assert self.is_primary
         await _STATE_PATH.write_text(state.value)
 
+    @retry_exponential(timedelta(seconds=10))
     async def get_state(self) -> WorkerStateEnum:
         return WorkerStateEnum(await _STATE_PATH.read_text())
 

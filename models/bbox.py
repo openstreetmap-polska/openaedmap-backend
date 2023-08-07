@@ -14,9 +14,15 @@ class BBox(NamedTuple):
         lat_span = self.p2.lat - self.p1.lat
         lon_delta = lon_span * percentage
         lat_delta = lat_span * percentage
+
+        new_p1_lon = max(-180, min(180, self.p1.lon - lon_delta))
+        new_p1_lat = max(-90, min(90, self.p1.lat - lat_delta))
+        new_p2_lon = max(-180, min(180, self.p2.lon + lon_delta))
+        new_p2_lat = max(-90, min(90, self.p2.lat + lat_delta))
+
         return BBox(
-            LonLat(self.p1.lon - lon_delta, self.p1.lat - lat_delta),
-            LonLat(self.p2.lon + lon_delta, self.p2.lat + lat_delta))
+            LonLat(new_p1_lon, new_p1_lat),
+            LonLat(new_p2_lon, new_p2_lat))
 
     @classmethod
     def from_tuple(cls, bbox: tuple[float, float, float, float]) -> Self:
