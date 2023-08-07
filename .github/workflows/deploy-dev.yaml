@@ -5,7 +5,7 @@ on:
     branches:
       - dev
     paths-ignore:
-      - '*.md'
+      - "*.md"
 
 jobs:
   deploy:
@@ -36,5 +36,5 @@ jobs:
             git reset --hard origin/dev
 
             echo "Building and starting containers"
-            LISTEN="127.0.0.1:49223" docker-compose -f docker-compose.prod.yml -p prod_develop up -d --build
+            LISTEN="49223" docker-compose -f docker-compose.prod.yml -p prod_develop up -d --build
           EOF
