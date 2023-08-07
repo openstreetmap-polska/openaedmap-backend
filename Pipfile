@@ -1,0 +1,32 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[packages]
+anyio = "*"
+asyncio = "*"
+dacite = "*"
+fastapi = "*"
+filelock = "*"
+httpx = "*"
+jinja2 = "*"
+mapbox-vector-tile = "*"
+motor = "*"
+numba = "*"
+numpy = "*"
+orjson = "*"
+psutil = "*"
+pyproj = "*"
+scikit-learn = "*"
+shapely = "*"
+six = "*"
+starlette = "*"
+uvicorn = "*"
+xmltodict = "*"
+
+[dev-packages]
+autopep8 = "*"
+
+[requires]
+python_version = "3.11"
