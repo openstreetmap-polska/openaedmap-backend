@@ -22,7 +22,7 @@ AED_UPDATE_DELAY = timedelta(seconds=30)
 AED_REBUILD_THRESHOLD = timedelta(hours=1)
 
 TILE_COUNTRIES_CACHE_MAX_AGE = timedelta(hours=2)
-TILE_CACHE_STALE = timedelta(days=2)
+TILE_CACHE_STALE = timedelta(days=7)
 
 TILE_COUNTRIES_MAX_Z = 5
 TILE_MIN_Z = 3
