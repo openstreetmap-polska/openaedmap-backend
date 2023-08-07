@@ -52,7 +52,7 @@ async def get_country_names(request: Request, country_state: CountryStateDep, ae
 
 @router.get('/countries/{country_code}.geojson')
 @configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
-async def get_country_geojson(request: Request, country_code: Annotated[str, Path(min_length=2, max_length=5)], country_state: CountryStateDep, aed_state: AEDStateDep):
+async def get_country_geojson(request: Request, response: Response, country_code: Annotated[str, Path(min_length=2, max_length=5)], country_state: CountryStateDep, aed_state: AEDStateDep):
     if country_code == 'WORLD':
         aeds = await aed_state.get_all_aeds()
     else:
@@ -62,6 +62,8 @@ async def get_country_geojson(request: Request, country_code: Annotated[str, Pat
 
         aeds = await aed_state.get_aeds_within_geom(country.geometry, group_eps=None)
 
+    response.headers['Content-Disposition'] = 'attachment'
+    response.headers['Content-Type'] = 'application/geo+json'
     return {
         'type': 'FeatureCollection',
         'features': [
