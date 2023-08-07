@@ -3,6 +3,7 @@ from datetime import timedelta
 import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
 import api.v1.api as api
@@ -15,6 +16,7 @@ from states.worker_state import WorkerStateEnum, get_worker_state
 
 app = FastAPI(default_response_class=ORJSONResponse)
 app.include_router(api.router, prefix='/api/v1')
+app.add_middleware(GZipMiddleware, compresslevel=6)
 app.add_middleware(VersionMiddleware)
 app.add_middleware(
     CacheMiddleware,

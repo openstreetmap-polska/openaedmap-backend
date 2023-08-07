@@ -22,8 +22,10 @@ scikit-learn = "*"
 shapely = "*"
 six = "*"
 starlette = "*"
+timezonefinder = "*"
 uvicorn = "*"
 xmltodict = "*"
+python-dateutil = "*"
 
 [dev-packages]
 autopep8 = "*"
