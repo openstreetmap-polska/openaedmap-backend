@@ -21,7 +21,7 @@ async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stre
 
 
 @router.get('/countries/names')
-@configure_cache(timedelta(hours=1), stale=timedelta(days=2))
+@configure_cache(timedelta(hours=1), stale=timedelta(days=7))
 async def get_country_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep):
     countries = await country_state.get_all_countries()
 
