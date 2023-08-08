@@ -9,7 +9,8 @@ from pymongo import DeleteOne, ReplaceOne
 from shapely.geometry import mapping
 from sklearn.cluster import DBSCAN
 
-from config import AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
+from config import (AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY,
+                    VERSION_TIMESTAMP)
 from models.aed import AED
 from models.aed_group import AEDGroup
 from models.bbox import BBox
@@ -31,11 +32,15 @@ async def _should_update_db() -> tuple[bool, float]:
     if doc is None:
         return True, 0
 
-    update_age = time() - doc['update_timestamp']
-    if update_age > AED_UPDATE_DELAY.total_seconds():
-        return True, doc['update_timestamp']
+    update_timestamp = doc['update_timestamp']
+    # if update_timestamp < VERSION_TIMESTAMP:
+    #     return True, update_timestamp
 
-    return False, doc['update_timestamp']
+    update_age = time() - update_timestamp
+    if update_age > AED_UPDATE_DELAY.total_seconds():
+        return True, update_timestamp
+
+    return False, update_timestamp
 
 
 def _is_defibrillator(tags: dict[str, str]) -> bool:

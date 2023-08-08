@@ -80,13 +80,14 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
     send_stream, receive_stream = anyio.create_memory_object_stream()
     country_count_map = {}
 
-    async with anyio.create_task_group() as tg, send_stream, receive_stream:
-        for country in countries:
-            tg.start_soon(_count_aed_in_country, country, aed_state, send_stream)
+    with print_run_time('Counting AEDs'):
+        async with anyio.create_task_group() as tg, send_stream, receive_stream:
+            for country in countries:
+                tg.start_soon(_count_aed_in_country, country, aed_state, send_stream)
 
-        for _ in range(len(countries)):
-            country, count = await receive_stream.receive()
-            country_count_map[country.name] = (count, abbreviate(count))
+            for _ in range(len(countries)):
+                country, count = await receive_stream.receive()
+                country_count_map[country.name] = (count, abbreviate(count))
 
     return _mvt_encode(bbox, [{
         'name': 'countries',
@@ -113,7 +114,6 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
                     'point_count_abbreviated': country_count_map[country.name][1],
                 },
             } for country in countries
-            if country.label.min_z <= z <= country.label.max_z
         ]
     }])
 
