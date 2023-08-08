@@ -62,7 +62,7 @@ class CountryCode:
             properties['ADM0_A3'],
             properties['SOV_A3'],
         ):
-            if code and code[0] != '-' and code not in self.used:
+            if code and len(code) >= 2 and code[0] != '-' and code not in self.used:
                 self.used.add(code)
                 return code
 
