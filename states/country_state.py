@@ -60,8 +60,8 @@ async def _should_update_db() -> tuple[bool, float]:
         return True, 0
 
     update_timestamp = doc['update_timestamp']
-    if update_timestamp < VERSION_TIMESTAMP:
-        return True, update_timestamp
+    # if update_timestamp < VERSION_TIMESTAMP:
+    #     return True, update_timestamp
 
     update_age = time() - update_timestamp
     if update_age > COUNTRY_UPDATE_DELAY.total_seconds():
