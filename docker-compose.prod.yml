@@ -42,5 +42,22 @@ services:
     environment:
       MONGO_HOST: db
 
+  cache:
+    image: varnish
+    restart: unless-stopped
+    command:
+      - "varnishd"
+      - "-F"
+      - "-f"
+      - "/etc/varnish/default.vcl"
+      - "-s"
+      - "disk,/var/lib/varnish/varnish_storage.bin,2G"
+
+    depends_on:
+      - app
+
     ports:
-      - ${LISTEN:-80}:8000
+      - ${LISTEN:-80}:80
+
+    volumes:
+      - ./data/cache:/var/lib/varnish
