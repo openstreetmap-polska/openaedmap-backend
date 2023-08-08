@@ -11,7 +11,7 @@ from tqdm import tqdm
 from overpass import query_overpass
 
 _QUERY = (
-    'rel[boundary=administrative]["ISO3166-1"][name];'
+    'rel[boundary=administrative][admin_level=2]["ISO3166-1"][name];'
     'out geom qt;'
 )
 

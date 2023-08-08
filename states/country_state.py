@@ -18,21 +18,21 @@ from utils import as_dict, retry_exponential
 
 class CountryCode:
     def __init__(self):
-        self.counter = 0
         self.used = set()
 
     def get_unique(self, tags: dict[str, str]) -> str:
-        for code in (
-            tags.get('ISO3166-1'),
-            tags.get('ISO3166-1:alpha2'),
-            tags.get('ISO3166-1:alpha3'),
-        ):
-            if code and len(code) >= 2 and code not in self.used:
-                self.used.add(code)
-                return code
+        for check_used in (True, False):
+            for code in (
+                tags.get('ISO3166-2'),
+                tags.get('ISO3166-1'),
+                tags.get('ISO3166-1:alpha2'),
+                tags.get('ISO3166-1:alpha3'),
+            ):
+                if code and len(code) >= 2 and (not check_used or code not in self.used):
+                    self.used.add(code)
+                    return code
 
-        self.counter += 1
-        return f'{self.counter:02d}'
+        return 'XX'
 
 
 def _get_names(tags: dict[str, str]) -> dict[str, str]:
@@ -152,14 +152,6 @@ class CountryState:
             result.append(from_dict(Country, c))
 
         return tuple(result)
-
-    async def get_country_by_code(self, code: str) -> Country | None:
-        doc = await COUNTRY_COLLECTION.find_one({'code': code})
-        if doc is None:
-            return None
-        doc.pop('_id')
-        doc['geometry'] = shape(doc['geometry'])
-        return from_dict(Country, doc)
 
 
 _instance = CountryState()

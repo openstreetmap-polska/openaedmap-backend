@@ -63,7 +63,7 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
                     {'$set': {'country_codes': country_codes}}))
     else:
         countries = await country_state.get_all_countries()
-        id_codes_map = {aed.id: [] for aed in aeds}
+        id_codes_map = {aed.id: set() for aed in aeds}
 
         for country in tqdm(countries, desc='📫 Iterating over countries'):
             async for c in AED_COLLECTION.find({
@@ -72,13 +72,13 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
                     {'position': {'$geoIntersects': {'$geometry': mapping(country.geometry)}}},
                 ]
             }):
-                id_codes_map[c['id']].append(country.code)
+                id_codes_map[c['id']].add(country.code)
 
         for aed in aeds:
             bulk_write_args.append(
                 UpdateOne(
                     {'id': aed.id},
-                    {'$set': {'country_codes': id_codes_map[aed.id]}}))
+                    {'$set': {'country_codes': tuple(id_codes_map[aed.id])}}))
 
     await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
 
