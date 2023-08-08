@@ -42,10 +42,5 @@ services:
     environment:
       MONGO_HOST: db
 
-  cache:
-    image: varnish
-    restart: unless-stopped
-    command: ["varnishd", "-F", "-f", "/etc/varnish/default.vcl"]
-
     ports:
       - ${LISTEN:-80}:8000
