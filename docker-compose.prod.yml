@@ -61,4 +61,5 @@ services:
       - ${LISTEN:-80}:80
 
     volumes:
+      - ./default.vcl:/etc/varnish/default.vcl:ro
       - ./data/cache:/var/lib/varnish
