@@ -27,6 +27,9 @@ def _connect_segments(segments: Sequence[tuple[tuple]]) -> Iterable[Sequence[tup
     for node in chain.from_iterable(segments):
         node_count[node] += 1
 
+    if any(node_count[s[0]] < 2 or node_count[s[-1]] < 2 for s in segments):
+        raise ValueError('Segments must be closed')
+
     # node = intersection, node_count > 1
     # edge = segment between intersections
     G = nx.DiGraph()
@@ -142,14 +145,17 @@ async def get_countries_from_osm() -> tuple[Sequence[CountryFromOSM], float]:
             elif member['role'] == 'inner':
                 inner_segments.append(tuple((g['lon'], g['lat']) for g in member['geometry']))
 
-        outer_polys = (Polygon(s) for s in _connect_segments(outer_segments))
-        outer_polys = tuple(p for p in outer_polys if p.is_valid)
+        try:
+            outer_polys = (Polygon(s) for s in _connect_segments(outer_segments))
+            outer_polys = tuple(p for p in outer_polys if p.is_valid)
+            inner_polys = (Polygon(s) for s in _connect_segments(inner_segments))
+            inner_polys = tuple(p for p in inner_polys if p.is_valid)
+        except ValueError as e:
+            country_name = country['tags'].get('name', '??')
+            raise ValueError(f'Error processing {country_name}') from e
 
         if not outer_polys:
             continue
-
-        inner_polys = (Polygon(s) for s in _connect_segments(inner_segments))
-        inner_polys = tuple(p for p in inner_polys if p.is_valid)
 
         outer_union = unary_union(outer_polys)
         inner_union = unary_union(inner_polys)

@@ -83,6 +83,10 @@ async def _update_db() -> None:
         print('🗺️ Nothing to update')
         return
 
+    if len(countries_from_osm) < 210:
+        print(f'🗺️ Not enough countries found: {len(countries_from_osm)})')
+        return
+
     country_code = CountryCode()
     countries: list[Country] = []
 
