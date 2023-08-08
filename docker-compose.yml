@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     command:
       [
-        "pipenv run uvicorn main:app --host 0.0.0.0 --workers ${WORKERS:-16} --timeout-keep-alive 300 --timeout-graceful-shutdown 5 --no-server-header",
+        "pipenv run uvicorn main:app --host 0.0.0.0 --workers ${WORKERS:-16} --timeout-keep-alive 300 --timeout-graceful-shutdown 5",
       ]
 
     depends_on:

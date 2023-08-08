@@ -82,7 +82,8 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
                     {'id': aed.id},
                     {'$set': {'country_codes': tuple(id_codes_map[aed.id])}}))
 
-    await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
+    if bulk_write_args:
+        await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
 
 
 def _process_overpass_node(node: dict) -> AED:
