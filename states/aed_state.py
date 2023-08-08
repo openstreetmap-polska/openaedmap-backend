@@ -3,6 +3,8 @@ from typing import Annotated, Counter, Iterable, NoReturn, Sequence
 
 import anyio
 import numpy as np
+from asyncache import cached
+from cachetools import TTLCache
 from dacite import from_dict
 from fastapi import Depends
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
@@ -208,6 +210,7 @@ class AEDState:
     async def update_country_codes(self) -> None:
         await _assign_country_codes(await self.get_all_aeds())
 
+    @cached(TTLCache(maxsize=1024, ttl=300))
     async def count_aeds_by_country_code(self, country_code: str) -> int:
         return await AED_COLLECTION.count_documents({'country_codes': country_code})
 
