@@ -21,22 +21,32 @@ sub vcl_backend_response {
     }
 }
 
-sub vcl_deliver {
-    if (obj.hits > 0) {
-        if (obj.ttl + obj.grace > 0s) {
-            if (obj.ttl > 0s) {
-                set resp.http.X-Cache-Status = "HIT";
-            } else {
-                set resp.http.Cache-Control = regsub(resp.http.Cache-Control, "max-age=\d+", "max-age=0");
-                set resp.http.X-Cache-Status = "STALE";
-            }
-        } else {
-            set resp.http.Cache-Control = regsub(resp.http.Cache-Control, "max-age=\d+", "max-age=0");
-            set resp.http.X-Cache-Status = "EXPIRED";
+sub vcl_hit {
+    if (obj.ttl >= 0s) {
+        set resp.http.X-Cache = "HIT";
+    }
+    else {
+        set resp.http.Cache-Control = regsub(resp.http.Cache-Control, "max-age=\d+", "max-age=0");
+
+        if (obj.ttl + obj.grace >= 0s) {
+            set resp.http.X-Cache = "STALE";
         }
-    } else {
-        set resp.http.X-Cache-Status = "MISS";
+        else {
+            set resp.http.X-Cache = "EXPIRED";
+        }
     }
 
     return (deliver);
+}
+
+sub vcl_miss {
+    set resp.http.X-Cache = "MISS";
+
+    return (fetch);
+}
+
+sub vcl_pass {
+    set resp.http.X-Cache = "PASS";
+
+    return (fetch);
 }
