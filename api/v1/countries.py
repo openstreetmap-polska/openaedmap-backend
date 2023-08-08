@@ -1,10 +1,9 @@
 from datetime import timedelta
 from typing import Annotated
-from urllib.parse import quote_plus, unquote_plus
 
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Path, Request, Response
 from shapely.geometry import Point, mapping
 
 from middlewares.cache_middleware import configure_cache
@@ -16,12 +15,12 @@ router = APIRouter()
 
 
 async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
-    count = await aed_state.count_aeds(country.geometry)
+    count = await aed_state.count_aeds_by_country_code(country.code)
     await send_stream.send((country, count))
 
 
 @router.get('/countries/names')
-@configure_cache(timedelta(hours=1), stale=timedelta(days=2))
+@configure_cache(timedelta(hours=1), stale=timedelta(days=7))
 async def get_country_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep):
     countries = await country_state.get_all_countries()
 
@@ -56,11 +55,7 @@ async def get_country_geojson(request: Request, response: Response, country_code
     if country_code == 'WORLD':
         aeds = await aed_state.get_all_aeds()
     else:
-        country = await country_state.get_country_by_code(country_code)
-        if country is None:
-            raise HTTPException(404, f'Country code {country_code!r} not found')
-
-        aeds = await aed_state.get_aeds_within_geom(country.geometry, group_eps=None)
+        aeds = await aed_state.get_aeds_by_country_code(country_code)
 
     response.headers['Content-Disposition'] = 'attachment'
     response.headers['Content-Type'] = 'application/geo+json'

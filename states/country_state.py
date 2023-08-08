@@ -1,105 +1,121 @@
-from dataclasses import asdict
 from time import time
 from typing import Annotated, NoReturn, Sequence
 
 import anyio
-import orjson
 from dacite import from_dict
 from fastapi import Depends
-from shapely.geometry import MultiPolygon, mapping, shape
+from shapely.geometry import Point, mapping, shape
 
-from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
+from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY, VERSION_TIMESTAMP
+from country_from_osm import get_countries_from_osm
 from models.bbox import BBox
 from models.country import Country, CountryLabel
 from models.lonlat import LonLat
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, get_http_client, retry_exponential
-
-_GEOJSON_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson'
-
-
-async def _should_update_db() -> bool:
-    doc = await get_state_doc('country')
-    if doc is None:
-        return True
-
-    update_age = time() - doc['update_timestamp']
-    if update_age > COUNTRY_UPDATE_DELAY.total_seconds():
-        return True
-
-    return False
-
-
-@retry_exponential(None)
-async def _download_geojson() -> str:
-    async with get_http_client() as http:
-        r = await http.get(_GEOJSON_URL)
-        r.raise_for_status()
-    return r.text
-
-
-def _fix_shape(shape):
-    if isinstance(shape, MultiPolygon):
-        return MultiPolygon([_fix_shape(p) for p in shape.geoms])
-
-    return shape.buffer(0)
+from utils import as_dict, retry_exponential
 
 
 class CountryCode:
     def __init__(self):
-        self.counter = 0
         self.used = set()
 
-    def get_country_code(self, properties: dict[str, str]) -> str:
-        for code in (
-            properties['POSTAL'],
-            properties['ISO_A2'],
-            properties['ISO_A2_EH'],
-            properties['ISO_A3'],
-            properties['ISO_A3_EH'],
-            properties['ADM0_ISO'],
-            properties['ADM0_A3'],
-            properties['SOV_A3'],
-        ):
-            if code and code[0] != '-' and code not in self.used:
-                self.used.add(code)
-                return code
+    def get_unique(self, tags: dict[str, str]) -> str:
+        for check_used in (True, False):
+            for code in (
+                tags.get('ISO3166-2'),
+                tags.get('ISO3166-1'),
+                tags.get('ISO3166-1:alpha2'),
+                tags.get('ISO3166-1:alpha3'),
+            ):
+                if code and len(code) >= 2 and (not check_used or code not in self.used):
+                    self.used.add(code)
+                    return code
 
-        self.counter += 1
-        return f'{self.counter:02d}'
+        return 'XX'
+
+
+def _get_names(tags: dict[str, str]) -> dict[str, str]:
+    names = {}
+
+    for default in (
+        tags.get('name:en'),
+        tags.get('int_name'),
+        tags.get('name'),
+    ):
+        if default:
+            names['default'] = default
+            break
+
+    for k, v in tags.items():
+        if k.startswith('name:'):
+            names[k[5:].upper()] = v
+
+    return names
+
+
+async def _should_update_db() -> tuple[bool, float]:
+    doc = await get_state_doc('country')
+    if doc is None:
+        return True, 0
+
+    update_timestamp = doc['update_timestamp']
+    if update_timestamp < VERSION_TIMESTAMP:
+        return True, update_timestamp
+
+    update_age = time() - update_timestamp
+    if update_age > COUNTRY_UPDATE_DELAY.total_seconds():
+        return True, update_timestamp
+
+    return False, update_timestamp
 
 
 @retry_exponential(None)
 async def _update_db() -> None:
-    if not await _should_update_db():
+    update_required, update_timestamp = await _should_update_db()
+    if not update_required:
         return
 
     print('🗺️ Updating country database...')
-    data = orjson.loads(await _download_geojson())
+    countries_from_osm, data_timestamp = await get_countries_from_osm()
+
+    if data_timestamp <= update_timestamp:
+        print('🗺️ Nothing to update')
+        return
+
+    if len(countries_from_osm) < 210:
+        print(f'🗺️ Not enough countries found: {len(countries_from_osm)})')
+        return
+
     country_code = CountryCode()
     countries: list[Country] = []
 
-    for feature in data['features']:
-        names = {'default': feature['properties']['NAME']}
-        for k, v in feature['properties'].items():
-            if len(k) == 7 and k.startswith('NAME_'):
-                names[k[5:]] = v
-        code = country_code.get_country_code(feature['properties'])
-        geometry = _fix_shape(shape(feature['geometry']))
-        label_position = LonLat(feature['properties']['LABEL_X'], feature['properties']['LABEL_Y'])
-        label_min_z = feature['properties']['MIN_LABEL']
-        label_max_z = feature['properties']['MAX_LABEL']
-        label = CountryLabel(label_position, label_min_z, label_max_z)
-        countries.append(Country(names, code, geometry, label))
+    for c in countries_from_osm:
+        names = _get_names(c.tags)
+        code = country_code.get_unique(c.tags)
+        label_position = c.geometry.representative_point()
 
-    insert_many_arg = [as_dict(c) for c in countries]
+        if label_position.is_empty:
+            label_position = c.geometry.centroid
+
+        label_position = LonLat(label_position.x, label_position.y)
+        label = CountryLabel(label_position)
+        countries.append(Country(names, code, c.geometry, label))
+
+    insert_many_arg = tuple(as_dict(c) for c in countries)
 
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
         await COUNTRY_COLLECTION.delete_many({}, session=s)
         await COUNTRY_COLLECTION.insert_many(insert_many_arg, session=s)
-        await set_state_doc('country', {'update_timestamp': time()}, session=s)
+        await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
+
+    print('🗺️ Updating country codes')
+    from states.aed_state import get_aed_state
+    aed_state = get_aed_state()
+    await aed_state.update_country_codes()
+
+    print('🗺️ Update complete')
 
 
 class CountryState:
@@ -122,13 +138,16 @@ class CountryState:
 
         return tuple(result)
 
-    async def get_countries_within(self, bbox: BBox) -> Sequence[Country]:
+    async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
         result = []
 
         async for c in COUNTRY_COLLECTION.find({
             'geometry': {
                 '$geoIntersects': {
-                    '$geometry': mapping(bbox.extend(0.1).to_polygon())
+                    '$geometry': mapping(
+                        bbox_or_pos.extend(0.1).to_polygon()
+                        if isinstance(bbox_or_pos, BBox) else
+                        Point(bbox_or_pos.lon, bbox_or_pos.lat))
                 }
             }
         }):
@@ -137,14 +156,6 @@ class CountryState:
             result.append(from_dict(Country, c))
 
         return tuple(result)
-
-    async def get_country_by_code(self, code: str) -> Country | None:
-        doc = await COUNTRY_COLLECTION.find_one({'code': code})
-        if doc is None:
-            return None
-        doc.pop('_id')
-        doc['geometry'] = shape(doc['geometry'])
-        return from_dict(Country, doc)
 
 
 _instance = CountryState()

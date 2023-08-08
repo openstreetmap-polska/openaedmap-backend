@@ -12,7 +12,7 @@
             "args": [
                 "main:app",
                 "--workers",
-                "1",
+                "8",
             ],
             "jinja": true,
             "justMyCode": true,

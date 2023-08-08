@@ -4,10 +4,12 @@ from datetime import timedelta
 import pymongo
 from motor.core import AgnosticDatabase
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import IndexModel
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
 VERSION = '2.0'
+VERSION_TIMESTAMP = 0
 WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
@@ -21,7 +23,7 @@ COUNTRY_UPDATE_DELAY = timedelta(days=1)
 AED_UPDATE_DELAY = timedelta(seconds=30)
 AED_REBUILD_THRESHOLD = timedelta(hours=1)
 
-TILE_COUNTRIES_CACHE_MAX_AGE = timedelta(hours=2)
+TILE_COUNTRIES_CACHE_MAX_AGE = timedelta(hours=4)
 TILE_CACHE_STALE = timedelta(days=7)
 
 TILE_COUNTRIES_MAX_Z = 5
@@ -45,7 +47,17 @@ AED_COLLECTION = _mongo_db['aed']
 
 # this is run by a single, primary worker on startup
 async def startup_setup() -> None:
-    await COUNTRY_COLLECTION.create_index([('code', pymongo.ASCENDING)], unique=True)
-    await COUNTRY_COLLECTION.create_index([('geometry', pymongo.GEOSPHERE)])
-    await AED_COLLECTION.create_index([('id', pymongo.ASCENDING)], unique=True)
-    await AED_COLLECTION.create_index([('position', pymongo.GEOSPHERE)])
+    try:
+        await COUNTRY_COLLECTION.drop_index([('code', pymongo.ASCENDING)])
+    except Exception:
+        pass
+
+    await COUNTRY_COLLECTION.create_indexes([
+        IndexModel([('geometry', pymongo.GEOSPHERE)]),
+    ])
+
+    await AED_COLLECTION.create_indexes([
+        IndexModel([('id', pymongo.ASCENDING)], unique=True),
+        IndexModel([('country_codes', pymongo.ASCENDING)]),
+        IndexModel([('position', pymongo.GEOSPHERE)]),
+    ])

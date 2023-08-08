@@ -8,8 +8,6 @@ from models.lonlat import LonLat
 @dataclass(frozen=True, slots=True)
 class CountryLabel:
     position: LonLat
-    min_z: float
-    max_z: float
 
 
 @dataclass(frozen=True, slots=True)
