@@ -1,4 +1,4 @@
-vcl 4.0;
+vcl 4.1;
 
 backend default {
     .host = "app";

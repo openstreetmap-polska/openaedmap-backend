@@ -43,7 +43,7 @@ services:
       MONGO_HOST: db
 
   cache:
-    image: varnish
+    image: varnish:alpine
     restart: unless-stopped
     user: root
     command:
@@ -52,7 +52,7 @@ services:
       - "-f"
       - "/etc/varnish/default.vcl"
       - "-s"
-      - "disk,/var/lib/varnish/varnish_storage.bin,2G"
+      - "file,/var/lib/varnish/varnish_storage.bin,2G"
 
     depends_on:
       - app
