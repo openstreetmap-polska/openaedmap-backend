@@ -45,6 +45,7 @@ services:
   cache:
     image: varnish
     restart: unless-stopped
+    user: root
     command:
       - "varnishd"
       - "-F"
