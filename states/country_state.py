@@ -4,7 +4,7 @@ from typing import Annotated, NoReturn, Sequence
 import anyio
 from dacite import from_dict
 from fastapi import Depends
-from shapely.geometry import mapping, shape
+from shapely.geometry import Point, mapping, shape
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY, VERSION_TIMESTAMP
 from country_from_osm import get_countries_from_osm
@@ -106,6 +106,11 @@ async def _update_db() -> None:
         await COUNTRY_COLLECTION.insert_many(insert_many_arg, session=s)
         await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
 
+    print('🗺️ Updating country codes')
+    from states.aed_state import get_aed_state
+    aed_state = get_aed_state()
+    await aed_state.update_country_codes()
+
     print('🗺️ Update complete')
 
 
@@ -129,13 +134,16 @@ class CountryState:
 
         return tuple(result)
 
-    async def get_countries_within(self, bbox: BBox) -> Sequence[Country]:
+    async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
         result = []
 
         async for c in COUNTRY_COLLECTION.find({
             'geometry': {
                 '$geoIntersects': {
-                    '$geometry': mapping(bbox.extend(0.1).to_polygon())
+                    '$geometry': mapping(
+                        bbox_or_pos.extend(0.1).to_polygon()
+                        if isinstance(bbox_or_pos, BBox) else
+                        Point(bbox_or_pos.lon, bbox_or_pos.lat))
                 }
             }
         }):

@@ -8,6 +8,7 @@ from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
 VERSION = '2.0'
+VERSION_TIMESTAMP = 0
 WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
@@ -48,4 +49,5 @@ async def startup_setup() -> None:
     await COUNTRY_COLLECTION.create_index([('code', pymongo.ASCENDING)], unique=True)
     await COUNTRY_COLLECTION.create_index([('geometry', pymongo.GEOSPHERE)])
     await AED_COLLECTION.create_index([('id', pymongo.ASCENDING)], unique=True)
+    await AED_COLLECTION.create_index([('country_codes', pymongo.ASCENDING)])
     await AED_COLLECTION.create_index([('position', pymongo.GEOSPHERE)])

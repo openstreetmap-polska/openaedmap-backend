@@ -5,9 +5,10 @@ import anyio
 import numpy as np
 from dacite import from_dict
 from fastapi import Depends
-from pymongo import DeleteOne, ReplaceOne
+from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from shapely.geometry import mapping
 from sklearn.cluster import DBSCAN
+from tqdm import tqdm
 
 from config import (AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY,
                     VERSION_TIMESTAMP)
@@ -47,6 +48,41 @@ def _is_defibrillator(tags: dict[str, str]) -> bool:
     return tags.get('emergency') == 'defibrillator'
 
 
+async def _assign_country_codes(aeds: Sequence[AED]) -> None:
+    from states.country_state import get_country_state
+    country_state = get_country_state()
+    bulk_write_args = []
+
+    if len(aeds) < 100:
+        for aed in aeds:
+            countries = await country_state.get_countries_within(aed.position)
+            country_codes = tuple(set(c.code for c in countries))
+            bulk_write_args.append(
+                UpdateOne(
+                    {'id': aed.id},
+                    {'$set': {'country_codes': country_codes}}))
+    else:
+        countries = await country_state.get_all_countries()
+        id_codes_map = {aed.id: [] for aed in aeds}
+
+        for country in tqdm(countries, desc='📫 Iterating over countries'):
+            async for c in AED_COLLECTION.find({
+                '$and': [
+                    {'id': {'$in': tuple(id_codes_map)}},
+                    {'position': {'$geoIntersects': {'$geometry': mapping(country.geometry)}}},
+                ]
+            }):
+                id_codes_map[c['id']].append(country.code)
+
+        for aed in aeds:
+            bulk_write_args.append(
+                UpdateOne(
+                    {'id': aed.id},
+                    {'$set': {'country_codes': id_codes_map[aed.id]}}))
+
+    await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
+
+
 def _process_overpass_node(node: dict) -> AED:
     tags = node.get('tags', {})
     is_valid = _is_defibrillator(tags)
@@ -54,18 +90,24 @@ def _process_overpass_node(node: dict) -> AED:
     return AED(
         id=str(node['id']),
         position=LonLat(node['lon'], node['lat']),
+        country_codes=None,
         tags=tags)
 
 
 async def _update_db_snapshot() -> None:
     print('🩺 Updating aed database (overpass)...')
     elements, data_timestamp = await query_overpass(_QUERY, timeout=3600, must_return=True)
-    insert_many_arg = tuple(as_dict(_process_overpass_node(e)) for e in elements)
+    aeds = tuple(_process_overpass_node(e) for e in elements)
+    insert_many_arg = tuple(as_dict(aed) for aed in aeds)
 
     async with Transaction() as s:
         await AED_COLLECTION.delete_many({}, session=s)
         await AED_COLLECTION.insert_many(insert_many_arg, session=s)
         await set_state_doc('aed', {'update_timestamp': data_timestamp}, session=s)
+
+    if aeds:
+        print(f'🩺 Updating country codes')
+        await _assign_country_codes(aeds)
 
     print(f'🩺 Update complete: ={len(insert_many_arg)}')
 
@@ -84,6 +126,7 @@ def _process_action(action: dict) -> Iterable[AED | str]:
             return AED(
                 id=node_id,
                 position=LonLat(float(node['@lon']), float(node['@lat'])),
+                country_codes=None,
                 tags=node_tags)
         else:
             return node_id
@@ -108,25 +151,34 @@ async def _update_db_diffs(last_update: float) -> None:
         print('🩺 Nothing to update')
         return
 
-    bulk_write_arg = []
-    add_counter = 0
-    remove_counter = 0
+    aeds = []
+    remove_ids = set()
 
     for action in actions:
         for result in _process_action(action):
             if isinstance(result, AED):
-                bulk_write_arg.append(ReplaceOne({'id': result.id}, as_dict(result), upsert=True))
-                add_counter += 1
+                aeds.append(result)
             else:
-                bulk_write_arg.append(DeleteOne({'id': result}))
-                remove_counter += 1
+                remove_ids.add(result)
+
+    bulk_write_arg = []
+
+    for aed in aeds:
+        bulk_write_arg.append(ReplaceOne({'id': aed.id}, as_dict(aed), upsert=True))
+
+    for remove_id in remove_ids:
+        bulk_write_arg.append(DeleteOne({'id': remove_id}))
 
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
         await AED_COLLECTION.bulk_write(bulk_write_arg, ordered=True, session=s)
         await set_state_doc('aed', {'update_timestamp': data_timestamp}, session=s)
 
-    print(f'🩺 Update complete: +{add_counter} -{remove_counter}')
+    if aeds:
+        print(f'🩺 Updating country codes')
+        await _assign_country_codes(aeds)
+
+    print(f'🩺 Update complete: +{len(aeds)} -{len(remove_ids)}')
 
 
 @retry_exponential(None)
@@ -153,19 +205,19 @@ class AEDState:
                 started = True
             await anyio.sleep(AED_UPDATE_DELAY.total_seconds())
 
-    async def count_aeds(self, geometry) -> int:
-        return await AED_COLLECTION.count_documents({
-            'position': {
-                '$geoIntersects': {
-                    '$geometry': mapping(geometry)
-                }
-            }
-        })
+    async def update_country_codes(self) -> None:
+        await _assign_country_codes(await self.get_all_aeds())
 
-    async def get_all_aeds(self) -> Sequence[AED]:
+    async def count_aeds_by_country_code(self, country_code: str) -> int:
+        return await AED_COLLECTION.count_documents({'country_codes': country_code})
+
+    async def get_aeds_by_country_code(self, country_code: str) -> Sequence[AED]:
+        return await self.get_all_aeds({'country_codes': country_code})
+
+    async def get_all_aeds(self, filter: dict | None = None) -> Sequence[AED]:
         result_aed: list[AED] = []
 
-        async for c in AED_COLLECTION.find():
+        async for c in (AED_COLLECTION.find() if filter is None else AED_COLLECTION.find(filter)):
             c.pop('_id')
             result_aed.append(from_dict(AED, c))
 
@@ -175,31 +227,27 @@ class AEDState:
         return await self.get_aeds_within_geom(bbox.to_polygon(), group_eps)
 
     async def get_aeds_within_geom(self, geometry, group_eps: float | None) -> Sequence[AED | AEDGroup]:
-        result_aed: list[AED] = []
-
-        async for c in AED_COLLECTION.find({
+        aeds = await self.get_all_aeds({
             'position': {
                 '$geoIntersects': {
                     '$geometry': mapping(geometry)
                 }
             }
-        }):
-            c.pop('_id')
-            result_aed.append(from_dict(AED, c))
+        })
 
-        if len(result_aed) <= 1 or group_eps is None:
-            return tuple(result_aed)
+        if len(aeds) <= 1 or group_eps is None:
+            return tuple(aeds)
 
-        result_positions = tuple(tuple(iter(aed.position)) for aed in result_aed)
+        result_positions = tuple(tuple(iter(aed.position)) for aed in aeds)
         model = DBSCAN(eps=group_eps, min_samples=2, n_jobs=-1)
         clusters = model.fit_predict(result_positions)
 
-        result_grouped: list[AED | AEDGroup] = []
+        result: list[AED | AEDGroup] = []
         cluster_groups: tuple[list[AED]] = tuple([] for _ in range(clusters.max() + 1))
 
-        for aed, cluster in zip(result_aed, clusters):
+        for aed, cluster in zip(aeds, clusters):
             if cluster == -1:
-                result_grouped.append(aed)
+                result.append(aed)
             else:
                 cluster_groups[cluster].append(aed)
 
@@ -207,12 +255,12 @@ class AEDState:
             group_center = np.mean(tuple(tuple(iter(aed.position)) for aed in group), axis=0)
             group_access_counter = Counter(aed.access for aed in group)
             group_access = group_access_counter.most_common(1)[0][0]
-            result_grouped.append(AEDGroup(
+            result.append(AEDGroup(
                 position=LonLat(group_center[0], group_center[1]),
                 count=len(group),
                 access=group_access))
 
-        return tuple(result_grouped)
+        return tuple(result)
 
     async def get_aed_by_id(self, aed_id: str) -> AED | None:
         doc = await AED_COLLECTION.find_one({'id': aed_id})

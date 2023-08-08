@@ -42,7 +42,7 @@ def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
 
 
 async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
-    count = await aed_state.count_aeds(country.geometry)
+    count = await aed_state.count_aeds_by_country_code(country.code)
     await send_stream.send((country, count))
 
 

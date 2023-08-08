@@ -7,6 +7,7 @@ from models.lonlat import LonLat
 class AED:
     id: str
     position: LonLat
+    country_codes: list[str] | None
     tags: dict[str, str]
 
     @property
