@@ -36,5 +36,5 @@ jobs:
             git reset --hard origin/main
 
             echo "Building and starting containers"
-            LISTEN="49222" docker-compose -f docker-compose.prod.yml -p prod up -d --build
+            LISTEN=49222 docker-compose -f docker-compose.prod.yml up -d --build
           EOF

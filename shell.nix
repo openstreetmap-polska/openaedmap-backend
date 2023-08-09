@@ -7,6 +7,7 @@ pkgs.mkShell rec {
     gnused
     python311
     pipenv
+    util-linux # lscpu
   ];
 
   shellHook = with pkgs; ''

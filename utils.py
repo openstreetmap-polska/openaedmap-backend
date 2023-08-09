@@ -61,7 +61,7 @@ def get_http_client(base_url: str = '') -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=base_url,
         headers={'User-Agent': USER_AGENT},
-        timeout=httpx.Timeout(60, connect=10),
+        timeout=httpx.Timeout(60, connect=15),
     )
 
 
