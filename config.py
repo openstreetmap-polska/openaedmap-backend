@@ -23,6 +23,8 @@ COUNTRY_UPDATE_DELAY = timedelta(days=1)
 AED_UPDATE_DELAY = timedelta(seconds=30)
 AED_REBUILD_THRESHOLD = timedelta(hours=1)
 
+PLANET_DIFF_TIMEOUT = timedelta(minutes=5)
+
 TILE_COUNTRIES_CACHE_MAX_AGE = timedelta(hours=4)
 TILE_CACHE_STALE = timedelta(days=7)
 

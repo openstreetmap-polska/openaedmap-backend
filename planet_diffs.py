@@ -11,7 +11,7 @@ import xmltodict
 from anyio.streams.memory import MemoryObjectSendStream
 from httpx import AsyncClient
 
-from config import AED_REBUILD_THRESHOLD, REPLICATION_URL
+from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, REPLICATION_URL
 from utils import get_http_client, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
@@ -75,36 +75,37 @@ async def _get_planet_diff(http: AsyncClient, sequence_number: int, send_stream:
 
 
 async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
-    async with get_http_client(REPLICATION_URL) as http:
-        sequence_numbers = []
-        sequence_timestamps = []
+    with anyio.fail_after(PLANET_DIFF_TIMEOUT.total_seconds()):
+        async with get_http_client(REPLICATION_URL) as http:
+            sequence_numbers = []
+            sequence_timestamps = []
 
-        while True:
-            next_sequence_number = sequence_numbers[-1] - 1 if sequence_numbers else None
-            sequence_number, sequence_timestamp = await _get_state(http, next_sequence_number)
+            while True:
+                next_sequence_number = sequence_numbers[-1] - 1 if sequence_numbers else None
+                sequence_number, sequence_timestamp = await _get_state(http, next_sequence_number)
 
-            if sequence_timestamp <= last_update:
-                break
+                if sequence_timestamp <= last_update:
+                    break
 
-            sequence_numbers.append(sequence_number)
-            sequence_timestamps.append(sequence_timestamp)
+                sequence_numbers.append(sequence_number)
+                sequence_timestamps.append(sequence_timestamp)
 
-        if not sequence_numbers:
-            return (), last_update
+            if not sequence_numbers:
+                return (), last_update
 
-        send_stream, receive_stream = anyio.create_memory_object_stream()
-        result: list[tuple[int, dict]] = []
+            send_stream, receive_stream = anyio.create_memory_object_stream()
+            result: list[tuple[int, dict]] = []
 
-        async with anyio.create_task_group() as tg, send_stream, receive_stream:
-            for sequence_number in sequence_numbers:
-                tg.start_soon(_get_planet_diff, http, sequence_number, send_stream)
+            async with anyio.create_task_group() as tg, send_stream, receive_stream:
+                for sequence_number in sequence_numbers:
+                    tg.start_soon(_get_planet_diff, http, sequence_number, send_stream)
 
-            for _ in range(len(sequence_numbers)):
-                sequence_number, data = await receive_stream.receive()
-                result.append((sequence_number, data))
+                for _ in range(len(sequence_numbers)):
+                    sequence_number, data = await receive_stream.receive()
+                    result.append((sequence_number, data))
 
-        result.sort(key=itemgetter(0))
-        data = tuple(chain.from_iterable(data for _, data in result))
-        data_timestamp = sequence_timestamps[0]
+            result.sort(key=itemgetter(0))
+            data = tuple(chain.from_iterable(data for _, data in result))
+            data_timestamp = sequence_timestamps[0]
 
-        return data, data_timestamp
+            return data, data_timestamp
