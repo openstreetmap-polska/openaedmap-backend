@@ -16,7 +16,6 @@ from states.worker_state import WorkerStateEnum, get_worker_state
 
 app = FastAPI(default_response_class=ORJSONResponse)
 app.include_router(api.router, prefix='/api/v1')
-app.add_middleware(GZipMiddleware, compresslevel=6)
 app.add_middleware(VersionMiddleware)
 app.add_middleware(
     CacheMiddleware,
@@ -29,6 +28,7 @@ app.add_middleware(
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds())
 )
+app.add_middleware(GZipMiddleware, compresslevel=6)
 
 app_tg = anyio.create_task_group()
 
