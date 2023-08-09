@@ -7,6 +7,16 @@ backend default {
     .port = "8000";
 }
 
+sub vcl_recv {
+    # application does not use cookies
+    unset req.http.Cookie;
+
+    # cache origin-invariant
+    if (!req.http.Access-Control-Request-Method) {
+        unset req.http.Origin;
+    }
+}
+
 sub vcl_backend_response {
     # disable any caching by default
     set beresp.ttl = 0s;
@@ -24,6 +34,9 @@ sub vcl_backend_response {
 }
 
 sub vcl_deliver {
+    # restore CORS after origin stripping
+    set resp.http.Access-Control-Allow-Origin = "*";
+
     if (obj.hits > 0) {
         if (obj.ttl >= 0s) {
             set resp.http.X-Cache = "HIT";
