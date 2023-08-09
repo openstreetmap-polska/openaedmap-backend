@@ -35,9 +35,7 @@ sub vcl_backend_response {
 
 sub vcl_deliver {
     # restore CORS after origin stripping
-    if (req.http.X-Saved-Origin) {
-        set resp.http.Access-Control-Allow-Origin = "*";
-    }
+    set resp.http.Access-Control-Allow-Origin = "*";
 
     if (obj.hits > 0) {
         if (obj.ttl >= 0s) {
