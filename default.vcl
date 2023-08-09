@@ -11,11 +11,8 @@ sub vcl_recv {
     # application does not use cookies
     unset req.http.Cookie;
 
-    # cache origin invariant
+    # cache origin-invariant
     if (!req.http.Access-Control-Request-Method) {
-        # save origin in a custom header
-        set req.http.X-Saved-Origin = req.http.Origin;
-        # remove origin from the request
         unset req.http.Origin;
     }
 }
@@ -37,15 +34,9 @@ sub vcl_backend_response {
 }
 
 sub vcl_deliver {
+    # restore CORS after origin stripping
     if (req.http.X-Saved-Origin) {
-        # restore origin from the custom header
-        set resp.http.Access-Control-Allow-Origin = req.http.X-Saved-Origin;
-    }
-
-    if (resp.http.Vary) {
-        set resp.http.Vary = resp.http.Vary + ",Origin";
-    } else {
-        set resp.http.Vary = "Origin";
+        set resp.http.Access-Control-Allow-Origin = "*";
     }
 
     if (obj.hits > 0) {
