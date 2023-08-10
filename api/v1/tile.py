@@ -119,8 +119,8 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
 
 
 async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
-    group_eps = 8 / 2 ** z if z < TILE_MAX_Z else None
-    aeds = await aed_state.get_aeds_within(bbox.extend(0.2), group_eps)
+    group_eps = 10 / 2 ** z if z < TILE_MAX_Z else None
+    aeds = await aed_state.get_aeds_within(bbox.extend(0.5), group_eps)
 
     return _mvt_encode(bbox, [{
         'name': 'defibrillators',

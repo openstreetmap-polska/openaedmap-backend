@@ -145,7 +145,7 @@ class CountryState:
             'geometry': {
                 '$geoIntersects': {
                     '$geometry': mapping(
-                        bbox_or_pos.extend(0.1).to_polygon()
+                        bbox_or_pos.extend(0.15).to_polygon()
                         if isinstance(bbox_or_pos, BBox) else
                         Point(bbox_or_pos.lon, bbox_or_pos.lat))
                 }

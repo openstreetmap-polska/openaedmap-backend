@@ -2,14 +2,13 @@ from time import time
 from typing import Annotated, Counter, Iterable, NoReturn, Sequence
 
 import anyio
-import numpy as np
 from asyncache import cached
 from cachetools import TTLCache
 from dacite import from_dict
 from fastapi import Depends
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from shapely.geometry import mapping
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import Birch
 from tqdm import tqdm
 
 from config import (AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY,
@@ -22,7 +21,7 @@ from overpass import query_overpass
 from planet_diffs import get_planet_diffs
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, retry_exponential
+from utils import as_dict, print_run_time, retry_exponential
 
 _QUERY = (
     'node[emergency=defibrillator];'
@@ -240,29 +239,35 @@ class AEDState:
         })
 
         if len(aeds) <= 1 or group_eps is None:
-            return tuple(aeds)
+            return aeds
 
         result_positions = tuple(tuple(iter(aed.position)) for aed in aeds)
-        model = DBSCAN(eps=group_eps, min_samples=2, n_jobs=-1)
-        clusters = model.fit_predict(result_positions)
+        model = Birch(threshold=group_eps, n_clusters=None, copy=False)
 
-        result: list[AED | AEDGroup] = []
-        cluster_groups: tuple[list[AED]] = tuple([] for _ in range(clusters.max() + 1))
+        with print_run_time(f'Clustering {len(aeds)} samples'):
+            clusters = model.fit_predict(result_positions)
 
-        for aed, cluster in zip(aeds, clusters):
-            if cluster == -1:
-                result.append(aed)
-            else:
+        with print_run_time(f'Processing {len(aeds)} samples'):
+            result: list[AED | AEDGroup] = []
+            cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
+
+            for aed, cluster in zip(aeds, clusters):
                 cluster_groups[cluster].append(aed)
 
-        for group in cluster_groups:
-            group_center = np.mean(tuple(tuple(iter(aed.position)) for aed in group), axis=0)
-            group_access_counter = Counter(aed.access for aed in group)
-            group_access = group_access_counter.most_common(1)[0][0]
-            result.append(AEDGroup(
-                position=LonLat(group_center[0], group_center[1]),
-                count=len(group),
-                access=group_access))
+            for group, center in zip(cluster_groups, model.subcluster_centers_):
+                if len(group) == 0:
+                    continue
+
+                if len(group) == 1:
+                    result.append(group[0])
+                    continue
+
+                group_access_counter = Counter(aed.access for aed in group)
+                group_access = group_access_counter.most_common(1)[0][0]
+                result.append(AEDGroup(
+                    position=LonLat(center[0], center[1]),
+                    count=len(group),
+                    access=group_access))
 
         return tuple(result)
 
