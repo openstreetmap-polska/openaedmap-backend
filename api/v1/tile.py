@@ -73,9 +73,11 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
 
 
 async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: CountryState, aed_state: AEDState) -> bytes:
-    countries = await country_state.get_countries_within(bbox)
+    with print_run_time('Querying countries'):
+        countries = await country_state.get_countries_within(bbox)
+
     simplify_tol = 0.5 / 2 ** z if z < TILE_MAX_Z else None
-    geometries = (country.geometry.simplify(simplify_tol) for country in countries)
+    geometries = (country.geometry.simplify(simplify_tol, preserve_topology=False) for country in countries)
 
     send_stream, receive_stream = anyio.create_memory_object_stream()
     country_count_map = {}
@@ -119,7 +121,7 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
 
 
 async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
-    group_eps = 10 / 2 ** z if z < TILE_MAX_Z else None
+    group_eps = 9.8 / 2 ** z if z < TILE_MAX_Z else None
     aeds = await aed_state.get_aeds_within(bbox.extend(0.5), group_eps)
 
     return _mvt_encode(bbox, [{

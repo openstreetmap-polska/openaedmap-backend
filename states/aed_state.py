@@ -214,17 +214,17 @@ class AEDState:
     async def count_aeds_by_country_code(self, country_code: str) -> int:
         return await AED_COLLECTION.count_documents({'country_codes': country_code})
 
+    async def get_all_aeds(self, filter: dict | None = None) -> Sequence[AED]:
+        cursor = AED_COLLECTION.find(filter, projection={'_id': False})
+        result = []
+
+        async for c in cursor:
+            result.append(from_dict(AED, c))
+
+        return tuple(result)
+
     async def get_aeds_by_country_code(self, country_code: str) -> Sequence[AED]:
         return await self.get_all_aeds({'country_codes': country_code})
-
-    async def get_all_aeds(self, filter: dict | None = None) -> Sequence[AED]:
-        result_aed: list[AED] = []
-
-        async for c in (AED_COLLECTION.find() if filter is None else AED_COLLECTION.find(filter)):
-            c.pop('_id')
-            result_aed.append(from_dict(AED, c))
-
-        return tuple(result_aed)
 
     async def get_aeds_within(self, bbox: BBox, group_eps: float | None) -> Sequence[AED | AEDGroup]:
         return await self.get_aeds_within_geom(bbox.to_polygon(), group_eps)
@@ -272,11 +272,8 @@ class AEDState:
         return tuple(result)
 
     async def get_aed_by_id(self, aed_id: str) -> AED | None:
-        doc = await AED_COLLECTION.find_one({'id': aed_id})
-        if doc is None:
-            return None
-        doc.pop('_id')
-        return from_dict(AED, doc)
+        doc = await AED_COLLECTION.find_one({'id': aed_id}, projection={'_id': False})
+        return from_dict(AED, doc) if doc else None
 
 
 _instance = AEDState()
