@@ -146,9 +146,9 @@ async def get_countries_from_osm() -> tuple[Sequence[CountryFromOSM], float]:
                 inner_segments.append(tuple((g['lon'], g['lat']) for g in member['geometry']))
 
         try:
-            outer_polys = (Polygon(s) for s in _connect_segments(outer_segments))
+            outer_polys = (Polygon(s).simplify(0.001) for s in _connect_segments(outer_segments))
             outer_polys = tuple(p for p in outer_polys if p.is_valid)
-            inner_polys = (Polygon(s) for s in _connect_segments(inner_segments))
+            inner_polys = (Polygon(s).simplify(0.001) for s in _connect_segments(inner_segments))
             inner_polys = tuple(p for p in inner_polys if p.is_valid)
         except ValueError as e:
             country_name = country['tags'].get('name', '??')

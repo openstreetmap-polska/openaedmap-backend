@@ -128,20 +128,17 @@ class CountryState:
                 started = True
             await anyio.sleep(COUNTRY_UPDATE_DELAY.total_seconds())
 
-    async def get_all_countries(self) -> Sequence[Country]:
+    async def get_all_countries(self, filter: dict | None = None) -> Sequence[Country]:
+        cursor = COUNTRY_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
-        async for c in COUNTRY_COLLECTION.find():
-            c.pop('_id')
-            c['geometry'] = shape(c['geometry'])
-            result.append(from_dict(Country, c))
+        async for c in cursor:
+            result.append(from_dict(Country, {**c, 'geometry': shape(c['geometry'])}))
 
         return tuple(result)
 
     async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
-        result = []
-
-        async for c in COUNTRY_COLLECTION.find({
+        return await self.get_all_countries({
             'geometry': {
                 '$geoIntersects': {
                     '$geometry': mapping(
@@ -150,12 +147,7 @@ class CountryState:
                         Point(bbox_or_pos.lon, bbox_or_pos.lat))
                 }
             }
-        }):
-            c.pop('_id')
-            c['geometry'] = shape(c['geometry'])
-            result.append(from_dict(Country, c))
-
-        return tuple(result)
+        })
 
 
 _instance = CountryState()
