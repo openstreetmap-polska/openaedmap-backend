@@ -69,16 +69,5 @@ jobs:
 
             echo "Restarting containers"
             export TAG=$TAG
-            if [ $TAG = "dev" ]; then
-              export LISTEN=49223
-              export WORKERS=4
-              export COUNTRY_UPDATE_DELAY=3650
-            elif [ $TAG = "main" ]; then
-              export LISTEN=49222
-              export WORKERS=12
-            else
-              echo "Invalid tag: $TAG"
-              exit 1
-            fi
-            docker compose up -d
+            docker compose --env-file envs/compose/$TAG.env up -d
           EOF

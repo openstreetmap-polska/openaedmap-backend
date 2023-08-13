@@ -46,6 +46,9 @@ services:
     depends_on:
       - db
 
+    env_file:
+      - envs/app/$TAG.env
+
     environment:
       MONGO_HOST: db
 
