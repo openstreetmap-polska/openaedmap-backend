@@ -1,4 +1,4 @@
-version: "3.9"
+version: "3"
 
 services:
   db:
@@ -29,15 +29,25 @@ services:
       - ./scripts/mongo-init-replica.sh:/mongo-init-replica.sh:ro
 
   app:
-    build: .
+    image: backend:${TAG:-latest}
     restart: unless-stopped
     command:
       [
-        "pipenv run uvicorn main:app --host 0.0.0.0 --workers ${WORKERS:-12} --timeout-keep-alive 300 --timeout-graceful-shutdown 5",
+        "--host",
+        "0.0.0.0",
+        "--workers",
+        "${WORKERS:-1}",
+        "--timeout-keep-alive",
+        "300",
+        "--timeout-graceful-shutdown",
+        "5",
       ]
 
     depends_on:
       - db
+
+    env_file:
+      - envs/app/${TAG:-dev}.env
 
     environment:
       MONGO_HOST: db
@@ -47,12 +57,14 @@ services:
     restart: unless-stopped
     user: root
     command:
-      - "varnishd"
-      - "-F"
-      - "-f"
-      - "/etc/varnish/default.vcl"
-      - "-s"
-      - "file,/var/lib/varnish/varnish_storage.bin,2G"
+      [
+        "varnishd",
+        "-F",
+        "-f",
+        "/etc/varnish/default.vcl",
+        "-s",
+        "file,/var/lib/varnish/varnish_storage.bin,2G",
+      ]
 
     depends_on:
       - app

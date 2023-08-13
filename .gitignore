@@ -196,4 +196,5 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/dotenv,python,visualstudiocode
 
+result
 data/*
