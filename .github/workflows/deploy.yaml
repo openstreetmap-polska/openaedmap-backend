@@ -1,0 +1,83 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - "*.md"
+
+jobs:
+  deploy:
+    name: Deploy dev
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare environment
+        run: |
+          echo "TAG=${{ github.head_ref || github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-23.05
+          extra_nix_config: |
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+            substituters = https://cache.nixos.org/
+
+      - name: Install dependencies
+        run: |
+          nix-shell --run "true"
+
+      - name: Build
+        run: |
+          echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          echo "Host remote
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            Port ${{ secrets.SSH_PORT }}
+            IdentityFile ~/.ssh/id_rsa
+          " > ~/.ssh/config
+
+      - name: Upload image
+        run: |
+          scp $IMAGE_PATH remote:~
+
+      - name: Deploy
+        run: |
+          ssh remote <<EOF
+            set -e
+
+            echo "Loading docker image"
+            docker load < $(basename $IMAGE_PATH) && rm $(basename $IMAGE_PATH)
+
+            echo "Fetching latest changes from the repository"
+            cd $TAG
+            git fetch origin $TAG
+            git checkout $TAG
+            git reset --hard origin/$TAG
+
+            echo "Restarting containers"
+            if [ $TAG = "dev" ]; then
+              export LISTEN=49223
+              export WORKERS=4
+              export COUNTRY_UPDATE_DELAY=3650
+            elif [ $TAG = "main" ]; then
+              export LISTEN=49222
+              export WORKERS=12
+            else
+              echo "Invalid tag: $TAG"
+              exit 1
+            fi
+            docker compose up -d
+          EOF
