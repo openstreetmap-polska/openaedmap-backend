@@ -47,7 +47,7 @@ services:
       - db
 
     env_file:
-      - envs/app/${TAG}.env
+      - envs/app/${TAG:-dev}.env
 
     environment:
       MONGO_HOST: db

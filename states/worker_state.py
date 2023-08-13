@@ -1,13 +1,12 @@
+import fcntl
 import os
-import shutil
 from datetime import timedelta
 from enum import Enum
-from typing import Annotated, Self
+from typing import Annotated
 
 import anyio
 import psutil
 from fastapi import Depends
-from filelock import FileLock
 
 from config import NAME
 from utils import retry_exponential
@@ -24,18 +23,17 @@ class WorkerStateEnum(Enum):
 
 class WorkerState:
     is_primary: bool
-    _lock: FileLock
 
     @retry_exponential(timedelta(seconds=10))
     async def ainit(self) -> None:
-        self._lock = FileLock(_LOCK_PATH)
+        self._lock_file = await anyio.open_file(_LOCK_PATH, 'w')
 
         try:
-            self._lock.acquire(blocking=False)
+            fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.is_primary = True
             await _STATE_PATH.write_text(WorkerStateEnum.STARTUP.value)
             await _PID_PATH.write_text(str(os.getpid()))
-        except Exception:
+        except BlockingIOError:
             self.is_primary = False
 
             while True:

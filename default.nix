@@ -27,6 +27,7 @@ dockerTools.buildLayeredImage {
 
   extraCommands = ''
     set -e
+    mkdir tmp
     mkdir app && cd app
     cp "${./.}"/LICENSE .
     cp "${./.}"/Makefile .
