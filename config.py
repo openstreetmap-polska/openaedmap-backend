@@ -19,7 +19,7 @@ REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
 
-COUNTRY_UPDATE_DELAY = timedelta(days=1)
+COUNTRY_UPDATE_DELAY = timedelta(days=float(os.getenv('COUNTRY_UPDATE_DELAY', '1')))
 AED_UPDATE_DELAY = timedelta(seconds=30)
 AED_REBUILD_THRESHOLD = timedelta(hours=1)
 
