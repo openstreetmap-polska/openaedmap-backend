@@ -68,6 +68,7 @@ jobs:
             git reset --hard origin/$TAG
 
             echo "Restarting containers"
+            export TAG=$TAG
             if [ $TAG = "dev" ]; then
               export LISTEN=49223
               export WORKERS=4
