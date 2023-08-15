@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import NamedTuple, Self, Sequence
 
 from shapely.geometry import Polygon
@@ -31,13 +32,25 @@ class BBox(NamedTuple):
     def to_tuple(self) -> tuple[float, float, float, float]:
         return (self.p1.lon, self.p1.lat, self.p2.lon, self.p2.lat)
 
-    def to_polygon(self) -> Polygon:
-        return Polygon([
-            (self.p1.lon, self.p1.lat),
-            (self.p2.lon, self.p1.lat),
-            (self.p2.lon, self.p2.lat),
-            (self.p1.lon, self.p2.lat),
-            (self.p1.lon, self.p1.lat)])
+    def to_polygon(self, *, nodes_per_edge: int = 2) -> Polygon:
+        if nodes_per_edge <= 2:
+            return Polygon([
+                (self.p1.lon, self.p1.lat),
+                (self.p2.lon, self.p1.lat),
+                (self.p2.lon, self.p2.lat),
+                (self.p1.lon, self.p2.lat),
+                (self.p1.lon, self.p1.lat)
+            ])
+
+        x_interval = (self.p2.lon - self.p1.lon) / (nodes_per_edge - 1)
+        y_interval = (self.p2.lat - self.p1.lat) / (nodes_per_edge - 1)
+
+        bottom_edge = tuple((self.p1.lon + i * x_interval, self.p1.lat) for i in range(nodes_per_edge))
+        top_edge = tuple((self.p1.lon + i * x_interval, self.p2.lat) for i in range(nodes_per_edge))
+        left_edge = tuple((self.p1.lon, self.p1.lat + i * y_interval) for i in range(1, nodes_per_edge - 1))
+        right_edge = tuple((self.p2.lon, self.p1.lat + i * y_interval) for i in range(1, nodes_per_edge - 1))
+
+        return Polygon(chain(bottom_edge, right_edge, reversed(top_edge), reversed(left_edge)))
 
     def correct_for_dateline(self) -> Sequence[Self]:
         if self.p1.lon > self.p2.lon:
