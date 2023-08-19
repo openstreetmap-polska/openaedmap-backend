@@ -1,4 +1,4 @@
-*.openaedmap.org, openaedmap.org {
+:443 {
     reverse_proxy cache:80
 
     tls /cert/ssl.crt /cert/ssl.key {
