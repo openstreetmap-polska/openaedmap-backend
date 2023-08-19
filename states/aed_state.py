@@ -262,12 +262,10 @@ class AEDState:
                     result.append(group[0])
                     continue
 
-                group_access_counter = Counter(aed.access for aed in group)
-                group_access = group_access_counter.most_common(1)[0][0]
                 result.append(AEDGroup(
                     position=LonLat(center[0], center[1]),
                     count=len(group),
-                    access=group_access))
+                    access=AEDGroup.decide_access(aed.access for aed in group)))
 
         return tuple(result)
 
