@@ -69,9 +69,20 @@ services:
     depends_on:
       - app
 
-    ports:
-      - ${LISTEN:-80}:80
-
     volumes:
       - ./default.vcl:/etc/varnish/default.vcl:ro
       - ./data/cache:/var/lib/varnish
+
+  https:
+    image: caddy:alpine
+    restart: unless-stopped
+
+    depends_on:
+      - cache
+
+    ports:
+      - ${LISTEN:-443}:443
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./cert:/cert:ro
