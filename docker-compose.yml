@@ -77,10 +77,6 @@ services:
     image: caddy:alpine
     restart: unless-stopped
 
-    sysctls:
-      net.core.rmem_max: 2500000
-      net.core.wmem_max: 2500000
-
     depends_on:
       - cache
 
