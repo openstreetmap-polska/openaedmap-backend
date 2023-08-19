@@ -2,6 +2,9 @@
     reverse_proxy cache:80
 
     tls /cert/ssl.crt /cert/ssl.key {
-        clients /cert/authenticated_origin_pull_ca.pem
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file /cert/authenticated_origin_pull_ca.pem
+        }
     }
 }
