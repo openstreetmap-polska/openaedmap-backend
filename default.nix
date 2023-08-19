@@ -21,7 +21,6 @@ in
 dockerTools.buildLayeredImage {
   name = "backend";
   tag = if envTag != "" then envTag else "latest";
-  maxLayers = 10;
 
   contents = shell.buildInputs ++ [ python-venv ];
 
