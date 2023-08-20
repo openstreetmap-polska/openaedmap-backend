@@ -12,8 +12,9 @@ from shapely.geometry import Point
 from shapely.ops import transform
 
 from config import (DEFAULT_CACHE_MAX_AGE, MVT_EXTENT, MVT_TRANSFORMER,
-                    TILE_CACHE_STALE, TILE_COUNTRIES_CACHE_MAX_AGE,
-                    TILE_COUNTRIES_MAX_Z, TILE_MAX_Z, TILE_MIN_Z)
+                    TILE_AEDS_CACHE_STALE, TILE_COUNTRIES_CACHE_MAX_AGE,
+                    TILE_COUNTRIES_CACHE_STALE, TILE_COUNTRIES_MAX_Z,
+                    TILE_MAX_Z, TILE_MIN_Z)
 from middlewares.cache_middleware import make_cache_control
 from models.aed import AED
 from models.bbox import BBox
@@ -159,9 +160,9 @@ async def get_tile(
 
     if z <= TILE_COUNTRIES_MAX_Z:
         bytes = await _get_tile_country(z, bbox, lang, country_state, aed_state)
-        headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_CACHE_STALE)}
+        headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
     else:
         bytes = await _get_tile_aed(z, bbox, aed_state)
-        headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_CACHE_STALE)}
+        headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE)}
 
     return Response(bytes, headers=headers, media_type='application/vnd.mapbox-vector-tile')

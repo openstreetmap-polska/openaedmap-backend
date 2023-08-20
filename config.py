@@ -27,7 +27,8 @@ AED_REBUILD_THRESHOLD = timedelta(hours=1)
 PLANET_DIFF_TIMEOUT = timedelta(minutes=5)
 
 TILE_COUNTRIES_CACHE_MAX_AGE = timedelta(hours=4)
-TILE_CACHE_STALE = timedelta(days=7)
+TILE_COUNTRIES_CACHE_STALE = timedelta(days=7)
+TILE_AEDS_CACHE_STALE = timedelta(days=3)
 
 TILE_COUNTRIES_MAX_Z = 5
 TILE_MIN_Z = 3
