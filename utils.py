@@ -52,7 +52,7 @@ def retry_exponential(timeout: timedelta | None, *, start: float = 1):
                     if (time.perf_counter() + sleep) - ts > timeout_seconds:
                         raise
                     await anyio.sleep(sleep)
-                    sleep *= 2
+                    sleep = min(sleep * 2, 4 * 3600)  # max 4 hours
 
         return wrapper
     return decorator

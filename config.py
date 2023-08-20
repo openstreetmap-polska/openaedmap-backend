@@ -8,13 +8,14 @@ from pymongo import IndexModel
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.0'
+VERSION = '2.1'
 VERSION_TIMESTAMP = 0
 WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
+COUNTRIES_GEOJSON_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_sovereignty.geojson'
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
