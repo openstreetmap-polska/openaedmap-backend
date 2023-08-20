@@ -11,6 +11,7 @@ from country_from_osm import get_countries_from_osm
 from models.bbox import BBox
 from models.country import Country, CountryLabel
 from models.lonlat import LonLat
+from natural_earth import validate_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
 from utils import as_dict, retry_exponential
@@ -101,6 +102,8 @@ async def _update_db() -> None:
         label_position = LonLat(label_position.x, label_position.y)
         label = CountryLabel(label_position)
         countries.append(Country(names, code, c.geometry, label))
+
+    await validate_countries(countries)
 
     insert_many_arg = tuple(as_dict(c) for c in countries)
 
