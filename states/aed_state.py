@@ -199,7 +199,12 @@ async def _update_db() -> None:
 
 class AEDState:
     async def update_db_task(self, *, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
-        started = False
+        if (await _should_update_db())[1] > 0:
+            task_status.started()
+            started = True
+        else:
+            started = False
+
         while True:
             await _update_db()
             if not started:
