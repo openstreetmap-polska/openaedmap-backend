@@ -23,7 +23,7 @@ class AEDGroup:
             'no': 5,
         }
 
-        min_access = 'no', tiered['no']
+        min_access = '', inf
 
         for access in accesses:
             if access == 'yes':
