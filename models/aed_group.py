@@ -17,11 +17,13 @@ class AEDGroup:
             'yes': 0,
             'permissive': 1,
             'customers': 2,
-            'private': 3,
-            'no': 4,
+            '': 3,
+            'unknown': 3,
+            'private': 4,
+            'no': 5,
         }
 
-        min_access = 'no', tiered['no']
+        min_access = '', inf
 
         for access in accesses:
             if access == 'yes':
