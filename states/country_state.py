@@ -70,7 +70,7 @@ async def _should_update_db() -> tuple[bool, float]:
     return False, update_timestamp
 
 
-@retry_exponential(None)
+@retry_exponential(None, start=4)
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:

@@ -31,7 +31,7 @@ def print_run_time(message: str | list) -> Generator[None, None, None]:
         print(f'[⏱️] {message} took {elapsed_time:.3f}s')
 
 
-def retry_exponential(timeout: timedelta | None):
+def retry_exponential(timeout: timedelta | None, *, start: float = 1):
     if timeout is None:
         timeout_seconds = inf
     else:
@@ -41,7 +41,7 @@ def retry_exponential(timeout: timedelta | None):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             ts = time.perf_counter()
-            sleep = 1
+            sleep = start
 
             while True:
                 try:

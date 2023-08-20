@@ -183,7 +183,7 @@ async def _update_db_diffs(last_update: float) -> None:
     print(f'🩺 Update complete: +{len(aeds)} -{len(remove_ids)}')
 
 
-@retry_exponential(None)
+@retry_exponential(None, start=4)
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:
