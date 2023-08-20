@@ -183,7 +183,7 @@ async def _update_db_diffs(last_update: float) -> None:
     print(f'🩺 Update complete: +{len(aeds)} -{len(remove_ids)}')
 
 
-@retry_exponential(None)
+@retry_exponential(None, start=4)
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:
@@ -199,7 +199,12 @@ async def _update_db() -> None:
 
 class AEDState:
     async def update_db_task(self, *, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
-        started = False
+        if (await _should_update_db())[1] > 0:
+            task_status.started()
+            started = True
+        else:
+            started = False
+
         while True:
             await _update_db()
             if not started:
