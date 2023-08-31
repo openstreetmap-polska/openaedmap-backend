@@ -6,9 +6,11 @@ verify_ssl = true
 [packages]
 anyio = "*"
 asyncache = "*"
+brotlipy = "*"
 cachetools = "*"
 dacite = "*"
 fastapi = "*"
+h2 = "*"
 httpx = "*"
 jinja2 = "*"
 mapbox-vector-tile = "*"
