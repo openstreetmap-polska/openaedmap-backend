@@ -28,7 +28,12 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
 
 
 @router.post('/upload')
-async def upload(node_id: Annotated[str, Form()], oauth2_credentials: Annotated[str, Form()], file: Annotated[UploadFile, File()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+async def upload(node_id: Annotated[str, Form()], file_license: Annotated[str, Form()], file: Annotated[UploadFile, File()], oauth2_credentials: Annotated[str, Form()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+    accept_licenses = ('CC0',)
+
+    if file_license.upper() not in accept_licenses:
+        raise HTTPException(400, f'Unsupported license {file_license!r}, must be one of {accept_licenses}')
+
     accept_content_types = ('image/jpeg', 'image/png', 'image/webp')
 
     if file.size <= 0:
