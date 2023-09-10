@@ -86,7 +86,7 @@ async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_
         if info is None:
             continue
 
-        fe = fg.add_entry()
+        fe = fg.add_entry(order='append')
         fe.id(report.id)
         fe.title('🚨 Received photo report')
         fe.description(f'File name: {info.path.name}')
