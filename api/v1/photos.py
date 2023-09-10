@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import orjson
@@ -91,5 +91,6 @@ async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_
         fe.title('🚨 Received photo report')
         fe.description(f'File name: {info.path.name}')
         fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
+        fe.published(datetime.utcfromtimestamp(report.timestamp).astimezone(tz=UTC))
 
     return Response(content=fg.rss_str(pretty=True), media_type='application/rss+xml')
