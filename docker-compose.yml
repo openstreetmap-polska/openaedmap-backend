@@ -52,6 +52,9 @@ services:
     environment:
       MONGO_HOST: db
 
+    volumes:
+      - /mnt/data/aed/${TAG:-dev}/photos:/app/data/photos
+
   cache:
     image: varnish:alpine
     restart: unless-stopped
