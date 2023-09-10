@@ -55,6 +55,7 @@ STATE_COLLECTION = _mongo_db['state']
 COUNTRY_COLLECTION = _mongo_db['country']
 AED_COLLECTION = _mongo_db['aed']
 PHOTO_COLLECTION = _mongo_db['photo']
+PHOTO_REPORT_COLLECTION = _mongo_db['photo_report']
 
 
 # this is run by a single, primary worker on startup
@@ -75,4 +76,9 @@ async def startup_setup() -> None:
     await PHOTO_COLLECTION.create_indexes([
         IndexModel([('id', pymongo.ASCENDING)], unique=True),
         IndexModel([('node_id', pymongo.ASCENDING), ('timestamp', pymongo.DESCENDING)]),
+    ])
+
+    await PHOTO_REPORT_COLLECTION.create_indexes([
+        IndexModel([('photo_id', pymongo.ASCENDING)], unique=True),
+        IndexModel([('timestamp', pymongo.DESCENDING)]),
     ])

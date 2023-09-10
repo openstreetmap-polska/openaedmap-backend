@@ -41,7 +41,7 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
     if (photo_info := await photo_state.get_photo_by_node_id(node_id)) is not None:
         photo_dict = {
             '@photo_id': photo_info.id,
-            '@photo_url': f'/api/v1/photos/view/{photo_info.id}',
+            '@photo_url': f'/api/v1/photos/view/{photo_info.id}.webp',
         }
     else:
         photo_dict = {

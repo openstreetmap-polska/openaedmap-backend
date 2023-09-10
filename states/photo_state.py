@@ -42,9 +42,18 @@ def _optimize_image(img: Image.Image, format: str = 'WEBP') -> bytes:
 
 
 class PhotoState:
-    async def get_photo_by_id(self, id: str) -> PhotoInfo | None:
+    async def get_photo_by_id(self, id: str, *, check_file: bool = True) -> PhotoInfo | None:
         doc = await PHOTO_COLLECTION.find_one({'id': id}, projection={'_id': False})
-        return from_dict(PhotoInfo, doc) if doc else None
+
+        if doc is None:
+            return None
+
+        info = from_dict(PhotoInfo, doc)
+
+        if check_file and not await info.path.is_file():
+            return None
+
+        return info
 
     async def get_photo_by_node_id(self, node_id: str) -> PhotoInfo | None:
         cursor = PHOTO_COLLECTION \
