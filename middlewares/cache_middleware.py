@@ -19,18 +19,19 @@ class CacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
 
-        try:
-            max_age = request.state.max_age
-        except AttributeError:
-            max_age = self.max_age
+        if request.method in ('GET', 'HEAD') and 200 <= response.status_code < 300:
+            try:
+                max_age = request.state.max_age
+            except AttributeError:
+                max_age = self.max_age
 
-        try:
-            stale = request.state.stale
-        except AttributeError:
-            stale = self.stale
+            try:
+                stale = request.state.stale
+            except AttributeError:
+                stale = self.stale
 
-        if 'Cache-Control' not in response.headers:
-            response.headers['Cache-Control'] = make_cache_control(max_age, stale)
+            if 'Cache-Control' not in response.headers:
+                response.headers['Cache-Control'] = make_cache_control(max_age, stale)
 
         return response
 

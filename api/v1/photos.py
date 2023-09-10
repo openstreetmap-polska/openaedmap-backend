@@ -1,0 +1,60 @@
+from datetime import timedelta
+from typing import Annotated
+
+import orjson
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+
+from middlewares.cache_middleware import configure_cache
+from openstreetmap import OpenStreetMap, osm_user_has_active_block
+from states.aed_state import AEDStateDep
+from states.photo_state import PhotoStateDep
+
+router = APIRouter(prefix='/photos')
+
+
+@router.get('/view/{id}')
+@configure_cache(timedelta(days=365), stale=timedelta(days=365))
+async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileResponse:
+    info = await photo_state.get_photo_by_id(id)
+
+    if info is None or not await info.path.is_file():
+        raise HTTPException(404, f'Photo {id!r} not found')
+
+    return FileResponse(info.path)
+
+
+@router.post('/upload')
+async def upload(node_id: Annotated[str, Form()], oauth2_credentials: Annotated[str, Form()], file: Annotated[UploadFile, File()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+    accept_content_types = ('image/jpeg', 'image/png', 'image/webp')
+
+    if file.size <= 0:
+        raise HTTPException(400, 'File must not be empty')
+
+    if file.content_type not in accept_content_types:
+        raise HTTPException(400, f'Unsupported file type {file.content_type!r}, must be one of {accept_content_types}')
+
+    try:
+        oauth2_credentials_ = orjson.loads(oauth2_credentials)
+    except Exception:
+        raise HTTPException(400, 'OAuth2 credentials must be a JSON object')
+
+    if 'access_token' not in oauth2_credentials_:
+        raise HTTPException(400, 'OAuth2 credentials must contain an access_token field')
+
+    aed = await aed_state.get_aed_by_id(node_id)
+
+    if aed is None:
+        raise HTTPException(404, f'Node {node_id!r} not found, perhaps it is not an AED?')
+
+    osm = OpenStreetMap(oauth2_credentials_)
+    osm_user = await osm.get_authorized_user()
+
+    if osm_user is None:
+        raise HTTPException(401, 'OAuth2 credentials are invalid')
+
+    if osm_user_has_active_block(osm_user):
+        raise HTTPException(403, 'User has an active block on OpenStreetMap')
+
+    await photo_state.set_photo(node_id, str(osm_user['id']), file)
+    return True

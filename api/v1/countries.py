@@ -11,7 +11,7 @@ from models.country import Country
 from states.aed_state import AEDState, AEDStateDep
 from states.country_state import CountryStateDep
 
-router = APIRouter()
+router = APIRouter(prefix='/countries')
 
 
 async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
@@ -19,9 +19,9 @@ async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stre
     await send_stream.send((country, count))
 
 
-@router.get('/countries/names')
+@router.get('/names')
 @configure_cache(timedelta(hours=1), stale=timedelta(days=7))
-async def get_country_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep):
+async def get_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep):
     countries = await country_state.get_all_countries()
 
     send_stream, receive_stream = anyio.create_memory_object_stream()
@@ -49,9 +49,9 @@ async def get_country_names(request: Request, country_state: CountryStateDep, ae
     }]
 
 
-@router.get('/countries/{country_code}.geojson')
+@router.get('/{country_code}.geojson')
 @configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
-async def get_country_geojson(request: Request, response: Response, country_code: Annotated[str, Path(min_length=2, max_length=5)], country_state: CountryStateDep, aed_state: AEDStateDep):
+async def get_geojson(request: Request, response: Response, country_code: Annotated[str, Path(min_length=2, max_length=5)], country_state: CountryStateDep, aed_state: AEDStateDep):
     if country_code == 'WORLD':
         aeds = await aed_state.get_all_aeds()
     else:

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import timedelta
 from math import atan2, cos, inf, pi, radians, sin, sqrt
-from typing import Generator
+from typing import Any, Generator
 
 import anyio
 import httpx
@@ -58,8 +58,9 @@ def retry_exponential(timeout: timedelta | None, *, start: float = 1):
     return decorator
 
 
-def get_http_client(base_url: str = '') -> httpx.AsyncClient:
+def get_http_client(base_url: str = '', *, auth: Any = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(
+        auth=auth,
         base_url=base_url,
         headers={'User-Agent': USER_AGENT},
         timeout=httpx.Timeout(60, connect=15),

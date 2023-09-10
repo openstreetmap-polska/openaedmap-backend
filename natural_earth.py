@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from shapely.geometry import Point, shape
+from shapely.geometry import shape
 
 from config import COUNTRIES_GEOJSON_URL
 from models.country import Country
