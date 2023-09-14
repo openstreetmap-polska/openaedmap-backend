@@ -1,3 +1,4 @@
+from math import inf
 from time import time
 from typing import Annotated, NoReturn, Sequence
 
@@ -7,11 +8,10 @@ from fastapi import Depends
 from shapely.geometry import Point, mapping, shape
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY, VERSION_TIMESTAMP
-from country_from_osm import get_countries_from_osm
 from models.bbox import BBox
 from models.country import Country, CountryLabel
 from models.lonlat import LonLat
-from natural_earth import validate_countries
+from osm_countries import get_osm_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
 from utils import as_dict, retry_exponential
@@ -78,32 +78,27 @@ async def _update_db() -> None:
         return
 
     print('🗺️ Updating country database...')
-    countries_from_osm, data_timestamp = await get_countries_from_osm()
+    osm_countries = await get_osm_countries()
+    data_timestamp = osm_countries[0].timestamp if osm_countries else -inf
 
     if data_timestamp <= update_timestamp:
         print('🗺️ Nothing to update')
         return
 
-    if len(countries_from_osm) < 210:
-        print(f'🗺️ Not enough countries found: {len(countries_from_osm)})')
+    if len(osm_countries) < 210:
+        # suspiciously low number of countries
+        print(f'🗺️ Not enough countries found: {len(osm_countries)})')
         return
 
     country_code = CountryCode()
     countries: list[Country] = []
 
-    for c in countries_from_osm:
+    for c in osm_countries:
         names = _get_names(c.tags)
         code = country_code.get_unique(c.tags)
-        label_position = c.geometry.representative_point()
-
-        if label_position.is_empty:
-            label_position = c.geometry.centroid
-
-        label_position = LonLat(label_position.x, label_position.y)
+        label_position = LonLat(c.representative_point.x, c.representative_point.y)
         label = CountryLabel(label_position)
         countries.append(Country(names, code, c.geometry, label))
-
-    await validate_countries(countries)
 
     insert_many_arg = tuple(as_dict(c) for c in countries)
 
