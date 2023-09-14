@@ -1,45 +1,54 @@
-# OpenAEDMap - backend
+# OpenAEDMap Backend 🌍❤️
 
-This is the backend repository for [OpenAEDMap.org](https://openaedmap.org). For the frontend code, please visit the [openaedmap-frontend](https://github.com/openstreetmap-polska/openaedmap-frontend).
+Ever wanted to be a superhero?
+OpenAEDMap gives you that chance.
+By pinpointing AED locations via OpenStreetMap, we equip you with the power to save lives.
+Save a life today by visiting [OpenAEDMap.org](https://openaedmap.org).
 
-Primary functionality:
+**🔧 This repository hosts the backend code.**
 
-- download data and updates from OSM
-- serve information about specific AEDs
-- create and serve vector tiles
-- generate regional geojson files for download
+For frontend implementations, please see [openaedmap-frontend](https://github.com/openstreetmap-polska/openaedmap-frontend).
 
-### Deployed instances
+### 🌟 Core Features
 
-<kbd>PROD</kbd> (main branch): https://openaedmap.org
+- **Automated OSM Updates:** Downloads data and updates from OpenStreetMap.
+- **AED Information:** Serve comprehensive details about specific AED locations.
+- **Vector Tiles:** Create and serve vector tiles for map rendering.
+- **Regional GeoJSON:** Generate downloadable GeoJSON files by region.
+- **Photo Integration:** Allows uploading and viewing of photos of individual AEDs.
 
-<kbd>DEV</kbd> (dev branch): https://dev.openaedmap.org
+### 🌐 Deployed Instances
 
-## Local Development
+- **Production** — main branch: [openaedmap.org](https://openaedmap.org)
+- **Development** — dev branch: [dev.openaedmap.org](https://dev.openaedmap.org)
 
-### Getting started
+## 🛠️ Local Development
 
-Before proceeding, install [nix](https://nixos.org/download) package manager. It simplifies installation of dependencies and setting up environment.
+### Getting Started
+
+Before you jump in, make sure to install the [❄️ Nix](https://nixos.org/download) package manager.
+It's your shortcut to seamless dependency management and reproducible environment setup.
+It will save you lots of time and spare you from unnecessary stress.
 
 ```sh
-# install dependencies, packages, etc.
+# Install dependencies and packages
 nix-shell
 
-# start database
+# Start up the database
 make dev-start
 
-# start web server
+# Launch the web server
 uvicorn main:app
 ```
 
-You can access the web app at: http://localhost:8000.
+Navigate to http://localhost:8000 to access the web app locally.
 
-### Cleaning up
+### Cleanup
 
 ```sh
-# stop database
+# Terminate the database
 make dev-stop
 
-# delete data
+# Purge data
 rm -r data
 ```

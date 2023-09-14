@@ -47,6 +47,9 @@ dockerTools.buildLayeredImage {
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
     ];
+    Volumes = {
+      "/app/data/photos" = { };
+    };
     Entrypoint = [ "python" "-m" "uvicorn" "main:app" ];
     Cmd = [ "--host" "0.0.0.0" ];
   };

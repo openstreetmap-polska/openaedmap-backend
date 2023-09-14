@@ -5,13 +5,12 @@
 with pkgs; let
   commonBuildInputs = [
     stdenv.cc.cc.lib
-    gnumake
-    gnused
     python311
-    util-linux # lscpu
   ];
 
   devBuildInputs = [
+    gnumake
+    gnused
     pipenv
   ];
 
