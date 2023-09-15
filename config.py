@@ -15,6 +15,7 @@ WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
+OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
 COUNTRIES_GEOJSON_URL = 'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
 
