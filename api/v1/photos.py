@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import magic
 import orjson
 from fastapi import (APIRouter, File, Form, HTTPException, Request, Response,
                      UploadFile)
@@ -34,13 +35,14 @@ async def upload(node_id: Annotated[str, Form()], file_license: Annotated[str, F
     if file_license.upper() not in accept_licenses:
         raise HTTPException(400, f'Unsupported license {file_license!r}, must be one of {accept_licenses}')
 
-    accept_content_types = ('image/jpeg', 'image/png', 'image/webp')
-
     if file.size <= 0:
         raise HTTPException(400, 'File must not be empty')
 
-    if file.content_type not in accept_content_types:
-        raise HTTPException(400, f'Unsupported file type {file.content_type!r}, must be one of {accept_content_types}')
+    content_type = magic.from_buffer(file.file.read(2048), mime=True)
+    accept_content_types = ('image/jpeg', 'image/png', 'image/webp')
+
+    if content_type not in accept_content_types:
+        raise HTTPException(400, f'Unsupported file type {content_type!r}, must be one of {accept_content_types}')
 
     try:
         oauth2_credentials_ = orjson.loads(oauth2_credentials)
