@@ -6,7 +6,7 @@ with pkgs; let
   commonBuildInputs = [
     stdenv.cc.cc.lib
     python311
-    file
+    file.out
   ];
 
   devBuildInputs = [
