@@ -1,7 +1,7 @@
 .PHONY: build version dev-start dev-stop dev-logs
 
 build:
-	docker buildx build .
+	docker load < $$(nix-build --no-out-link)
 
 version:
 	sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$$(date +%y%m%d)'|g" config.py
