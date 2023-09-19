@@ -27,18 +27,53 @@ def _resize_image(img: Image.Image) -> Image.Image:
 
 
 def _optimize_image(img: Image.Image, format: str = 'WEBP') -> bytes:
+    high, low = 95, 20
+    bs_step = 5
+    best_quality = None
+    best_buffer = None
+
     with BytesIO() as buffer:
-        for quality in (95, 90, 80, 70, 60, 50):
+        # initial quick scan
+        for quality in (80, 60, 40, 20):
             buffer.seek(0)
             buffer.truncate()
 
             img.save(buffer, format=format, quality=quality)
+            size = buffer.tell()
 
-            if buffer.tell() <= IMAGE_MAX_FILE_SIZE:
-                print(f'🅠 Photo quality: {quality}')
-                return buffer.getvalue()
+            print(f'[QS] 🅠 Q{quality}: {size / 1024 / 1024:.2f}MB')
 
-    raise ValueError('Image is too big')
+            if size > IMAGE_MAX_FILE_SIZE:
+                high = quality - bs_step
+            else:
+                low = quality + bs_step
+                best_quality = quality
+                best_buffer = buffer.getvalue()
+                break
+        else:
+            raise ValueError('Image is too big')
+
+        # fine-tune with binary search
+        while low <= high:
+            quality = ((low + high) // 2) // bs_step * bs_step
+
+            buffer.seek(0)
+            buffer.truncate()
+
+            img.save(buffer, format=format, quality=quality)
+            size = buffer.tell()
+
+            print(f'[BS] 🅠 Q{quality}: {size / 1024 / 1024:.2f}MB')
+
+            if size > IMAGE_MAX_FILE_SIZE:
+                high = quality - bs_step
+            else:
+                low = quality + bs_step
+                best_quality = quality
+                best_buffer = buffer.getvalue()
+
+        print(f'🅠 Photo quality: {best_quality}')
+        return best_buffer
 
 
 class PhotoState:

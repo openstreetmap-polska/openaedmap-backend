@@ -15,6 +15,7 @@ WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
+OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
 COUNTRIES_GEOJSON_URL = 'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
 
@@ -41,7 +42,7 @@ MVT_EXTENT = 4096
 MVT_TRANSFORMER = Transformer.from_crs(OSM_PROJ, MVT_PROJ, always_xy=True)
 
 IMAGE_LIMIT_PIXELS = 6 * 1000 * 1000  # 6 MP (e.g., 3000x2000)
-IMAGE_MAX_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
+IMAGE_MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB
 
 DATA_DIR = Path('data')
 PHOTOS_DIR = DATA_DIR / 'photos'
