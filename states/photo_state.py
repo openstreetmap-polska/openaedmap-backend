@@ -28,13 +28,16 @@ def _resize_image(img: Image.Image) -> Image.Image:
 
 def _optimize_image(img: Image.Image, format: str = 'WEBP') -> bytes:
     with BytesIO() as buffer:
-        for quality in (95, 90, 80, 70, 60, 50):
+        for quality in (95, 90, 85, 80, 70, 60, 50, 40, 30):
             buffer.seek(0)
             buffer.truncate()
 
             img.save(buffer, format=format, quality=quality)
 
-            if buffer.tell() <= IMAGE_MAX_FILE_SIZE:
+            size = buffer.tell()
+            print(f'🅠 Q{quality}: {size / 1024 / 1024:.2f}MB')
+
+            if size <= IMAGE_MAX_FILE_SIZE:
                 print(f'🅠 Photo quality: {quality}')
                 return buffer.getvalue()
 
