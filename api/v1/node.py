@@ -49,7 +49,7 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
     if (
         (image_url := aed.tags.get('image', '')) and
         (photo_id_match := photo_id_re.search(image_url)) and
-        (photo_id := photo_id_match.group('id'))
+        (photo_id := photo_id_match.group('id')) and
         (photo_info := await photo_state.get_photo_by_id(photo_id))
     ):
         photo_dict = {
