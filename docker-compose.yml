@@ -41,6 +41,9 @@ services:
         "300",
         "--timeout-graceful-shutdown",
         "5",
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
       ]
 
     depends_on:
