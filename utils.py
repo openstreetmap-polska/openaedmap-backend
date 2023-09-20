@@ -67,6 +67,11 @@ def get_http_client(base_url: str = '', *, auth: Any = None) -> httpx.AsyncClien
     )
 
 
+# NOTE: one day we should fix this with the X-Forwarded-Proto header
+def upgrade_https(url: str) -> str:
+    return url.replace('http://', 'https://', 1)
+
+
 def abbreviate(num: int) -> str:
     for suffix, divisor in (('m', 1_000_000), ('k', 1_000)):
         if num >= divisor:

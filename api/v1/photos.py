@@ -15,6 +15,7 @@ from osm_change import update_node_tags_osm_change
 from states.aed_state import AEDStateDep
 from states.photo_report_state import PhotoReportStateDep
 from states.photo_state import PhotoStateDep
+from utils import upgrade_https
 
 router = APIRouter(prefix='/photos')
 
@@ -70,7 +71,7 @@ async def upload(request: Request, node_id: Annotated[str, Form()], file_license
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
     photo_info = await photo_state.set_photo(node_id, str(osm_user['id']), file)
-    photo_url = str(request.url_for('view', id=photo_info.id))
+    photo_url = upgrade_https(str(request.url_for('view', id=photo_info.id)))
 
     node_xml = await osm.get_node_xml(node_id)
 
@@ -79,12 +80,7 @@ async def upload(request: Request, node_id: Annotated[str, Form()], file_license
         'image:license': file_license,
     })
 
-    try:
-        await osm.upload_osm_change(osm_change)
-    except Exception:
-        traceback.print_exc()
-        print(f'⛔ Failed to upload OSM change for {photo_info.id=!r}')
-
+    await osm.upload_osm_change(osm_change)
     return True
 
 
@@ -98,7 +94,7 @@ async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_
     fg = FeedGenerator()
     fg.title('AED Photo Reports')
     fg.description('This feed contains a list of recent AED photo reports')
-    fg.link(href=str(request.url), rel='self')
+    fg.link(href=upgrade_https(str(request.url)), rel='self')
 
     for report in await photo_report_state.get_recent_reports():
         info = await photo_state.get_photo_by_id(report.photo_id)
@@ -109,8 +105,11 @@ async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_
         fe = fg.add_entry(order='append')
         fe.id(report.id)
         fe.title('🚨 Received photo report')
-        fe.description(f'File name: {info.path.name}')
-        fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
+        fe.content('<br>'.join((
+            f'File name: {info.path.name}',
+            f'Node: https://osm.org/node/{info.node_id}',
+        )), type='CDATA')
+        fe.link(href=upgrade_https(f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp'))
         fe.published(datetime.utcfromtimestamp(report.timestamp).astimezone(tz=UTC))
 
     return Response(content=fg.rss_str(pretty=True), media_type='application/rss+xml')
