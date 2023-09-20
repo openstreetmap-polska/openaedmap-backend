@@ -1,3 +1,4 @@
+import traceback
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from feedgen.feed import FeedGenerator
 
 from middlewares.cache_middleware import configure_cache
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
+from osm_change import update_node_tags_osm_change
 from states.aed_state import AEDStateDep
 from states.photo_report_state import PhotoReportStateDep
 from states.photo_state import PhotoStateDep
@@ -29,10 +31,11 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
 
 
 @router.post('/upload')
-async def upload(node_id: Annotated[str, Form()], file_license: Annotated[str, Form()], file: Annotated[UploadFile, File()], oauth2_credentials: Annotated[str, Form()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+async def upload(request: Request, node_id: Annotated[str, Form()], file_license: Annotated[str, Form()], file: Annotated[UploadFile, File()], oauth2_credentials: Annotated[str, Form()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+    file_license = file_license.upper()
     accept_licenses = ('CC0',)
 
-    if file_license.upper() not in accept_licenses:
+    if file_license not in accept_licenses:
         raise HTTPException(400, f'Unsupported license {file_license!r}, must be one of {accept_licenses}')
 
     if file.size <= 0:
@@ -66,7 +69,22 @@ async def upload(node_id: Annotated[str, Form()], file_license: Annotated[str, F
     if osm_user_has_active_block(osm_user):
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
-    await photo_state.set_photo(node_id, str(osm_user['id']), file)
+    photo_info = await photo_state.set_photo(node_id, str(osm_user['id']), file)
+    photo_url = str(request.url_for('view', id=photo_info.id))
+
+    node_xml = await osm.get_node_xml(node_id)
+
+    osm_change = update_node_tags_osm_change(node_xml, {
+        'image': photo_url,
+        'image:license': file_license,
+    })
+
+    try:
+        await osm.upload_osm_change(osm_change)
+    except Exception:
+        traceback.print_exc()
+        print(f'⛔ Failed to upload OSM change for {photo_info.id=!r}')
+
     return True
 
 

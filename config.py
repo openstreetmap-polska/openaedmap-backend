@@ -11,6 +11,7 @@ from pyproj import Transformer
 NAME = 'openaedmap-backend'
 VERSION = '2.3'
 VERSION_TIMESTAMP = 0
+CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
@@ -18,6 +19,7 @@ OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
 COUNTRIES_GEOJSON_URL = 'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
+
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
@@ -35,6 +37,14 @@ TILE_AEDS_CACHE_STALE = timedelta(days=3)
 TILE_COUNTRIES_MAX_Z = 5
 TILE_MIN_Z = 3
 TILE_MAX_Z = 16
+
+DEFAULT_CHANGESET_TAGS = {
+    'comment': 'Updated AED image',
+    'created_by': CREATED_BY,
+    'website': WEBSITE,
+}
+
+CHANGESET_ID_PLACEHOLDER = '__CHANGESET_ID_PLACEHOLDER__'
 
 OSM_PROJ = 'epsg:4326'
 MVT_PROJ = 'epsg:3857'
