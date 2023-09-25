@@ -58,7 +58,7 @@ async def get_geojson(request: Request, response: Response, country_code: Annota
         aeds = await aed_state.get_aeds_by_country_code(country_code)
 
     response.headers['Content-Disposition'] = 'attachment'
-    response.headers['Content-Type'] = 'application/geo+json'
+    response.headers['Content-Type'] = 'application/geo+json; charset=utf-8'
     return {
         'type': 'FeatureCollection',
         'features': [
