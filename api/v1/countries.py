@@ -21,7 +21,7 @@ async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stre
 
 @router.get('/names')
 @configure_cache(timedelta(hours=1), stale=timedelta(days=7))
-async def get_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep):
+async def get_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep, language: str | None = None):
     countries = await country_state.get_all_countries()
 
     send_stream, receive_stream = anyio.create_memory_object_stream()
@@ -34,10 +34,16 @@ async def get_names(request: Request, country_state: CountryStateDep, aed_state:
         for _ in range(len(countries)):
             country, count = await receive_stream.receive()
             country_count_map[country.name] = count
+
+    def limit_country_names(names: dict[str, str]):
+        if language and (name := names.get(language)):
+            return {language: name}
+        return names
+
     return [
         {
             'country_code': country.code,
-            'country_names': country.names,
+            'country_names': limit_country_names(country.names),
             'feature_count': country_count_map[country.name],
             'data_path': f'/api/v1/countries/{country.code}.geojson',
         } for country in countries
