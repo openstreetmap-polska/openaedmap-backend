@@ -31,7 +31,7 @@ jobs:
 
       - name: Install dependencies and compile cython
         run: |
-          nix-shell --run "make"
+          nix-shell --run "pipenv run make"
 
       - name: Build
         run: |
