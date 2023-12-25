@@ -1,10 +1,14 @@
-{ pkgs ? import <nixpkgs> { } }:
+{ pkgsnix ? import ./pkgs.nix
+, pkgs ? pkgsnix.pkgs
+, unstable ? pkgsnix.unstable
+}:
 
 with pkgs; let
   envTag = builtins.getEnv "TAG";
 
   shell = import ./shell.nix {
     inherit pkgs;
+    inherit unstable;
     isDocker = true;
   };
 
