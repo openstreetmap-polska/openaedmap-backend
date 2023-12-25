@@ -4,11 +4,13 @@ import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import api.v1.api as api
 from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE, startup_setup
 from middlewares.cache_middleware import CacheMiddleware
-from middlewares.version_middleware import VersionMiddleware
+from middlewares.profiler_middleware import profiler_middleware
+from middlewares.version_middleware import version_middleware
 from orjson_response import CustomORJSONResponse
 from states.aed_state import get_aed_state
 from states.country_state import get_country_state
@@ -16,7 +18,8 @@ from states.worker_state import WorkerStateEnum, get_worker_state
 
 app = FastAPI(default_response_class=CustomORJSONResponse)
 app.include_router(api.router, prefix='/api/v1')
-app.add_middleware(VersionMiddleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=profiler_middleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=version_middleware)
 app.add_middleware(
     CacheMiddleware,
     max_age=DEFAULT_CACHE_MAX_AGE,
