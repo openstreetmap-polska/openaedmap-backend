@@ -35,11 +35,11 @@ dockerTools.buildLayeredImage {
     cp "${./.}"/LICENSE .
     cp "${./.}"/Makefile .
     cp "${./.}"/*.py .
-    mkdir -p api/v1 middlewares models states
-    cp "${./api/v1}"/*.py api/v1
-    cp "${./middlewares}"/*.py middlewares
-    cp "${./models}"/*.py models
-    cp "${./states}"/*.py states
+    cp -r "${./.}"/api .
+    cp -r "${./.}"/cython_lib .
+    cp -r "${./.}"/middlewares .
+    cp -r "${./.}"/models .
+    cp -r "${./.}"/states .
     ${shell.shellHook}
   '';
 

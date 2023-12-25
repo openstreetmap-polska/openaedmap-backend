@@ -1,4 +1,3 @@
-import math
 from collections.abc import Sequence
 from itertools import chain
 from typing import Annotated
@@ -8,7 +7,6 @@ import mapbox_vector_tile as mvt
 import numpy as np
 from anyio.streams.memory import MemoryObjectSendStream
 from fastapi import APIRouter, Path, Response
-from numba import njit
 from shapely.ops import transform
 
 from config import (
@@ -22,31 +20,16 @@ from config import (
     TILE_MAX_Z,
     TILE_MIN_Z,
 )
+from cython_lib.geo_utils import tile_to_bbox
 from middlewares.cache_middleware import make_cache_control
 from models.aed import AED
 from models.bbox import BBox
 from models.country import Country
-from models.lonlat import LonLat
 from states.aed_state import AEDState, AEDStateDep
 from states.country_state import CountryState, CountryStateDep
 from utils import abbreviate, print_run_time
 
 router = APIRouter()
-
-
-@njit(fastmath=True)
-def _tile_to_lonlat(z: int, x: int, y: int) -> tuple[float, float]:
-    n = 2.0**z
-    lon_deg = x / n * 360.0 - 180.0
-    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y / n)))
-    lat_deg = math.degrees(lat_rad)
-    return lon_deg, lat_deg
-
-
-def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
-    p1_lon, p1_lat = _tile_to_lonlat(z, x, y)
-    p2_lon, p2_lat = _tile_to_lonlat(z, x + 1, y + 1)
-    return BBox(LonLat(p1_lon, p2_lat), LonLat(p2_lon, p1_lat))
 
 
 async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
@@ -174,7 +157,7 @@ async def get_tile(
     country_state: CountryStateDep,
     aed_state: AEDStateDep,
 ):
-    bbox = _tile_to_bbox(z, x, y)
+    bbox = tile_to_bbox(z, x, y)
     assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
     assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
 

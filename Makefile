@@ -1,6 +1,9 @@
-.PHONY: build version dev-start dev-stop dev-logs
+.PHONY: setup docker version dev-start dev-stop dev-logs
 
-build:
+setup:
+	python setup.py build_ext --build-lib cython_lib
+
+docker:
 	docker load < $$(nix-build --no-out-link)
 
 version:

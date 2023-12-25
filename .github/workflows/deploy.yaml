@@ -29,9 +29,9 @@ jobs:
             trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
             substituters = https://cache.nixos.org/
 
-      - name: Install dependencies
+      - name: Install dependencies and compile cython
         run: |
-          nix-shell --run "true"
+          nix-shell --run "make"
 
       - name: Build
         run: |
