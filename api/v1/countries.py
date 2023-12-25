@@ -4,7 +4,7 @@ from typing import Annotated
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
 from fastapi import APIRouter, Path, Request, Response
-from shapely.geometry import Point, mapping
+from shapely.geometry import mapping
 
 from middlewares.cache_middleware import configure_cache
 from models.country import Country
@@ -84,7 +84,7 @@ async def get_geojson(
         'features': [
             {
                 'type': 'Feature',
-                'geometry': mapping(Point(*aed.position)),
+                'geometry': mapping(aed.position.shapely),
                 'properties': {'@osm_type': 'node', '@osm_id': int(aed.id), **aed.tags},
             }
             for aed in aeds

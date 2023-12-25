@@ -7,9 +7,8 @@ import anyio
 import mapbox_vector_tile as mvt
 import numpy as np
 from anyio.streams.memory import MemoryObjectSendStream
-from fastapi import APIRouter, Path, Query, Response
+from fastapi import APIRouter, Path, Response
 from numba import njit
-from shapely.geometry import Point
 from shapely.ops import transform
 
 from config import (
@@ -82,7 +81,7 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
         return mvt.encode(data, default_options={'extents': MVT_EXTENT})
 
 
-async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: CountryState, aed_state: AEDState) -> bytes:
+async def _get_tile_country(z: int, bbox: BBox, country_state: CountryState, aed_state: AEDState) -> bytes:
     with print_run_time('Querying countries'):
         countries = await country_state.get_countries_within(bbox)
 
@@ -109,23 +108,19 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
                 'features': [
                     {
                         'geometry': geometry,
-                        'properties': {
-                            'country_name': country.get_name(lang),
-                            'country_code': country.code,
-                            'point_count': country_count_map[country.name][0],
-                            'point_count_abbreviated': country_count_map[country.name][1],
-                        },
+                        'properties': {},
                     }
-                    for country, geometry in zip(countries, geometries, strict=True)
+                    for geometry in geometries
                 ],
             },
             {
                 'name': 'defibrillators',
                 'features': [
                     {
-                        'geometry': Point(*country.label.position),
+                        'geometry': country.label.position.shapely,
                         'properties': {
-                            'country_name': country.get_name(lang),
+                            'country_name': country.name,
+                            'country_names': country.names,
                             'country_code': country.code,
                             'point_count': country_count_map[country.name][0],
                             'point_count_abbreviated': country_count_map[country.name][1],
@@ -149,7 +144,7 @@ async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
                 'name': 'defibrillators',
                 'features': [
                     {
-                        'geometry': Point(*aed.position),
+                        'geometry': aed.position.shapely,
                         'properties': {
                             'node_id': int(aed.id),
                             'access': aed.access,
@@ -157,7 +152,7 @@ async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
                     }
                     if isinstance(aed, AED)
                     else {
-                        'geometry': Point(*aed.position),
+                        'geometry': aed.position.shapely,
                         'properties': {
                             'point_count': aed.count,
                             'point_count_abbreviated': abbreviate(aed.count),
@@ -178,14 +173,13 @@ async def get_tile(
     y: Annotated[int, Path(ge=0)],
     country_state: CountryStateDep,
     aed_state: AEDStateDep,
-    lang: Annotated[str, Query(min_length=2, max_length=2)] = 'default',
 ):
     bbox = _tile_to_bbox(z, x, y)
     assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
     assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
 
     if z <= TILE_COUNTRIES_MAX_Z:
-        content = await _get_tile_country(z, bbox, lang, country_state, aed_state)
+        content = await _get_tile_country(z, bbox, country_state, aed_state)
         headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
     else:
         content = await _get_tile_aed(z, bbox, aed_state)

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry.base import BaseGeometry
 
 from models.lonlat import LonLat
 
@@ -14,7 +14,7 @@ class CountryLabel:
 class Country:
     names: dict[str, str]
     code: str
-    geometry: MultiPolygon | Polygon
+    geometry: BaseGeometry
     label: CountryLabel
 
     @property
