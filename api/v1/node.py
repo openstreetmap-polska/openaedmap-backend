@@ -47,10 +47,10 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
 
     # TODO: support other image sources
     if (
-        (image_url := aed.tags.get('image', '')) and
-        (photo_id_match := photo_id_re.search(image_url)) and
-        (photo_id := photo_id_match.group('id')) and
-        (photo_info := await photo_state.get_photo_by_id(photo_id))
+        (image_url := aed.tags.get('image', ''))
+        and (photo_id_match := photo_id_re.search(image_url))
+        and (photo_id := photo_id_match.group('id'))
+        and (photo_info := await photo_state.get_photo_by_id(photo_id))
     ):
         photo_dict = {
             '@photo_id': photo_info.id,
@@ -67,14 +67,16 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
         'copyright': 'OpenStreetMap and contributors',
         'attribution': 'https://www.openstreetmap.org/copyright',
         'license': 'https://opendatacommons.org/licenses/odbl/1-0/',
-        'elements': [{
-            **photo_dict,
-            **timezone_dict,
-            'type': 'node',
-            'id': int(aed.id),
-            'lat': aed.position.lat,
-            'lon': aed.position.lon,
-            'tags': aed.tags,
-            'version': 0,
-        }]
+        'elements': [
+            {
+                **photo_dict,
+                **timezone_dict,
+                'type': 'node',
+                'id': int(aed.id),
+                'lat': aed.position.lat,
+                'lon': aed.position.lon,
+                'tags': aed.tags,
+                'version': 0,
+            }
+        ],
     }

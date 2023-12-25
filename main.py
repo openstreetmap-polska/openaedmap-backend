@@ -20,13 +20,13 @@ app.add_middleware(VersionMiddleware)
 app.add_middleware(
     CacheMiddleware,
     max_age=DEFAULT_CACHE_MAX_AGE,
-    stale=DEFAULT_CACHE_STALE
+    stale=DEFAULT_CACHE_STALE,
 )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
     allow_methods=['GET'],
-    max_age=int(timedelta(days=1).total_seconds())
+    max_age=int(timedelta(days=1).total_seconds()),
 )
 app.add_middleware(GZipMiddleware, compresslevel=6)
 

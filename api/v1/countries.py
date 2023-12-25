@@ -21,7 +21,12 @@ async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stre
 
 @router.get('/names')
 @configure_cache(timedelta(hours=1), stale=timedelta(days=7))
-async def get_names(request: Request, country_state: CountryStateDep, aed_state: AEDStateDep, language: str | None = None):
+async def get_names(
+    request: Request,
+    country_state: CountryStateDep,
+    aed_state: AEDStateDep,
+    language: str | None = None,
+):
     countries = await country_state.get_all_countries()
 
     send_stream, receive_stream = anyio.create_memory_object_stream()
@@ -46,18 +51,27 @@ async def get_names(request: Request, country_state: CountryStateDep, aed_state:
             'country_names': limit_country_names(country.names),
             'feature_count': country_count_map[country.name],
             'data_path': f'/api/v1/countries/{country.code}.geojson',
-        } for country in countries
-    ] + [{
-        'country_code': 'WORLD',
-        'country_names': {'default': 'World'},
-        'feature_count': sum(country_count_map.values()),
-        'data_path': '/api/v1/countries/WORLD.geojson',
-    }]
+        }
+        for country in countries
+    ] + [
+        {
+            'country_code': 'WORLD',
+            'country_names': {'default': 'World'},
+            'feature_count': sum(country_count_map.values()),
+            'data_path': '/api/v1/countries/WORLD.geojson',
+        }
+    ]
 
 
 @router.get('/{country_code}.geojson')
 @configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
-async def get_geojson(request: Request, response: Response, country_code: Annotated[str, Path(min_length=2, max_length=5)], country_state: CountryStateDep, aed_state: AEDStateDep):
+async def get_geojson(
+    request: Request,
+    response: Response,
+    country_code: Annotated[str, Path(min_length=2, max_length=5)],
+    country_state: CountryStateDep,
+    aed_state: AEDStateDep,
+):
     if country_code == 'WORLD':
         aeds = await aed_state.get_all_aeds()
     else:
@@ -71,11 +85,8 @@ async def get_geojson(request: Request, response: Response, country_code: Annota
             {
                 'type': 'Feature',
                 'geometry': mapping(Point(*aed.position)),
-                'properties': {
-                    '@osm_type': 'node',
-                    '@osm_id': int(aed.id),
-                    **aed.tags
-                }
-            } for aed in aeds
-        ]
+                'properties': {'@osm_type': 'node', '@osm_id': int(aed.id), **aed.tags},
+            }
+            for aed in aeds
+        ],
     }

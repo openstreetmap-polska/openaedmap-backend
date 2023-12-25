@@ -91,9 +91,10 @@ class PhotoState:
         return info
 
     async def get_photo_by_node_id(self, node_id: str) -> PhotoInfo | None:
-        cursor = PHOTO_COLLECTION \
-            .find({'node_id': node_id}, projection={'_id': False}) \
-            .sort('timestamp', pymongo.DESCENDING)
+        cursor = PHOTO_COLLECTION.find(
+            {'node_id': node_id},
+            projection={'_id': False},
+        ).sort('timestamp', pymongo.DESCENDING)
 
         async for c in cursor:
             info = from_dict(PhotoInfo, c)

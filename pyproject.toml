@@ -29,7 +29,11 @@ line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-ignore = []
+ignore = [
+  "ARG001", # unused argument
+  "S101", # assert statements
+  "S108", # hardcoded temp file
+]
 select = [
   # see https://docs.astral.sh/ruff/rules/ for rules documentation
   "A", # flake8-builtins
@@ -92,7 +96,7 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [tool.ruff.lint.flake8-builtins]
-builtins-ignorelist = ["id", "open", "type"]
+builtins-ignorelist = ["id", "open", "type", "filter", "format"]
 
 [tool.ruff.lint.flake8-gettext]
 extend-function-names = ["pgettext", "npgettext"]

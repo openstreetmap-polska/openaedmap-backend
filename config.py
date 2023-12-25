@@ -18,7 +18,9 @@ USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
-COUNTRIES_GEOJSON_URL = 'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
+COUNTRIES_GEOJSON_URL = (
+    'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
+)
 
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
@@ -74,22 +76,30 @@ async def startup_setup() -> None:
     await DATA_DIR.mkdir(exist_ok=True)
     await PHOTOS_DIR.mkdir(exist_ok=True)
 
-    await COUNTRY_COLLECTION.create_indexes([
-        IndexModel([('geometry', pymongo.GEOSPHERE)]),
-    ])
+    await COUNTRY_COLLECTION.create_indexes(
+        [
+            IndexModel([('geometry', pymongo.GEOSPHERE)]),
+        ]
+    )
 
-    await AED_COLLECTION.create_indexes([
-        IndexModel([('id', pymongo.ASCENDING)], unique=True),
-        IndexModel([('country_codes', pymongo.ASCENDING)]),
-        IndexModel([('position', pymongo.GEOSPHERE)]),
-    ])
+    await AED_COLLECTION.create_indexes(
+        [
+            IndexModel([('id', pymongo.ASCENDING)], unique=True),
+            IndexModel([('country_codes', pymongo.ASCENDING)]),
+            IndexModel([('position', pymongo.GEOSPHERE)]),
+        ]
+    )
 
-    await PHOTO_COLLECTION.create_indexes([
-        IndexModel([('id', pymongo.ASCENDING)], unique=True),
-        IndexModel([('node_id', pymongo.ASCENDING), ('timestamp', pymongo.DESCENDING)]),
-    ])
+    await PHOTO_COLLECTION.create_indexes(
+        [
+            IndexModel([('id', pymongo.ASCENDING)], unique=True),
+            IndexModel([('node_id', pymongo.ASCENDING), ('timestamp', pymongo.DESCENDING)]),
+        ]
+    )
 
-    await PHOTO_REPORT_COLLECTION.create_indexes([
-        IndexModel([('photo_id', pymongo.ASCENDING)], unique=True),
-        IndexModel([('timestamp', pymongo.DESCENDING)]),
-    ])
+    await PHOTO_REPORT_COLLECTION.create_indexes(
+        [
+            IndexModel([('photo_id', pymongo.ASCENDING)], unique=True),
+            IndexModel([('timestamp', pymongo.DESCENDING)]),
+        ]
+    )

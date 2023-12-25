@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from itertools import chain
-from typing import NamedTuple, Self, Sequence
+from typing import NamedTuple, Self
 
 from shapely.geometry import Polygon
 
@@ -21,9 +22,7 @@ class BBox(NamedTuple):
         new_p2_lon = max(-180, min(180, self.p2.lon + lon_delta))
         new_p2_lat = max(-90, min(90, self.p2.lat + lat_delta))
 
-        return BBox(
-            LonLat(new_p1_lon, new_p1_lat),
-            LonLat(new_p2_lon, new_p2_lat))
+        return BBox(LonLat(new_p1_lon, new_p1_lat), LonLat(new_p2_lon, new_p2_lat))
 
     @classmethod
     def from_tuple(cls, bbox: tuple[float, float, float, float]) -> Self:
@@ -34,13 +33,15 @@ class BBox(NamedTuple):
 
     def to_polygon(self, *, nodes_per_edge: int = 2) -> Polygon:
         if nodes_per_edge <= 2:
-            return Polygon([
-                (self.p1.lon, self.p1.lat),
-                (self.p2.lon, self.p1.lat),
-                (self.p2.lon, self.p2.lat),
-                (self.p1.lon, self.p2.lat),
-                (self.p1.lon, self.p1.lat)
-            ])
+            return Polygon(
+                [
+                    (self.p1.lon, self.p1.lat),
+                    (self.p2.lon, self.p1.lat),
+                    (self.p2.lon, self.p2.lat),
+                    (self.p1.lon, self.p2.lat),
+                    (self.p1.lon, self.p1.lat),
+                ]
+            )
 
         x_interval = (self.p2.lon - self.p1.lon) / (nodes_per_edge - 1)
         y_interval = (self.p2.lat - self.p1.lat) / (nodes_per_edge - 1)
@@ -54,8 +55,6 @@ class BBox(NamedTuple):
 
     def correct_for_dateline(self) -> Sequence[Self]:
         if self.p1.lon > self.p2.lon:
-            return (
-                BBox(self.p1, LonLat(180, self.p2.lat)),
-                BBox(LonLat(-180, self.p1.lat), self.p2))
+            return (BBox(self.p1, LonLat(180, self.p2.lat)), BBox(LonLat(-180, self.p1.lat), self.p2))
         else:
             return (self,)

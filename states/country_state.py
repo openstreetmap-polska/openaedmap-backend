@@ -1,13 +1,13 @@
-from math import inf
+from collections.abc import Sequence
 from time import time
-from typing import Annotated, NoReturn, Sequence
+from typing import Annotated, NoReturn
 
 import anyio
 from dacite import from_dict
 from fastapi import Depends
 from shapely.geometry import Point, mapping, shape
 
-from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY, VERSION_TIMESTAMP
+from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
 from models.bbox import BBox
 from models.country import Country, CountryLabel
 from models.lonlat import LonLat
@@ -79,7 +79,7 @@ async def _update_db() -> None:
 
     print('🗺️ Updating country database...')
     osm_countries = await get_osm_countries()
-    data_timestamp = osm_countries[0].timestamp if osm_countries else -inf
+    data_timestamp = osm_countries[0].timestamp if osm_countries else float('-inf')
 
     if data_timestamp <= update_timestamp:
         print('🗺️ Nothing to update')
@@ -110,6 +110,7 @@ async def _update_db() -> None:
 
     print('🗺️ Updating country codes')
     from states.aed_state import get_aed_state
+
     aed_state = get_aed_state()
     await aed_state.update_country_codes()
 
@@ -136,21 +137,24 @@ class CountryState:
         result = []
 
         async for c in cursor:
-            result.append(from_dict(Country, {**c, 'geometry': shape(c['geometry'])}))
+            result.append(from_dict(Country, {**c, 'geometry': shape(c['geometry'])}))  # noqa: PERF401
 
         return tuple(result)
 
     async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
-        return await self.get_all_countries({
-            'geometry': {
-                '$geoIntersects': {
-                    '$geometry': mapping(
-                        bbox_or_pos.to_polygon(nodes_per_edge=8)
-                        if isinstance(bbox_or_pos, BBox) else
-                        Point(bbox_or_pos.lon, bbox_or_pos.lat))
+        return await self.get_all_countries(
+            {
+                'geometry': {
+                    '$geoIntersects': {
+                        '$geometry': mapping(
+                            bbox_or_pos.to_polygon(nodes_per_edge=8)
+                            if isinstance(bbox_or_pos, BBox)
+                            else Point(bbox_or_pos.lon, bbox_or_pos.lat)
+                        )
+                    }
                 }
             }
-        })
+        )
 
 
 _instance = CountryState()

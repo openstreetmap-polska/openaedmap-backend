@@ -1,10 +1,9 @@
 import gzip
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from heapq import heappush
 from itertools import chain
 from operator import itemgetter
-from typing import Sequence
 
 import anyio
 import xmltodict
@@ -18,7 +17,7 @@ from xmltodict_postprocessor import xmltodict_postprocessor
 
 def _format_sequence_number(sequence_number: int) -> str:
     result = f'{sequence_number:09d}'
-    result = '/'.join(result[i:i + 3] for i in range(0, 9, 3))
+    result = '/'.join(result[i : i + 3] for i in range(0, 9, 3))
     return result
 
 
@@ -59,9 +58,11 @@ async def _get_planet_diff(http: AsyncClient, sequence_number: int, send_stream:
     xml_gz = r.content
     xml = gzip.decompress(xml_gz).decode()
     xml = _format_actions(xml)
-    actions: list[dict] = xmltodict.parse(xml,
-                                          postprocessor=xmltodict_postprocessor,
-                                          force_list=('action', 'node', 'way', 'relation', 'member', 'tag', 'nd'))['osmChange']['action']
+    actions: list[dict] = xmltodict.parse(
+        xml,
+        postprocessor=xmltodict_postprocessor,
+        force_list=('action', 'node', 'way', 'relation', 'member', 'tag', 'nd'),
+    )['osmChange']['action']
 
     node_actions = []
 

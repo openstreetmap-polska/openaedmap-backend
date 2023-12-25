@@ -1,6 +1,7 @@
 import math
+from collections.abc import Sequence
 from itertools import chain
-from typing import Annotated, Sequence
+from typing import Annotated
 
 import anyio
 import mapbox_vector_tile as mvt
@@ -11,10 +12,17 @@ from numba import njit
 from shapely.geometry import Point
 from shapely.ops import transform
 
-from config import (DEFAULT_CACHE_MAX_AGE, MVT_EXTENT, MVT_TRANSFORMER,
-                    TILE_AEDS_CACHE_STALE, TILE_COUNTRIES_CACHE_MAX_AGE,
-                    TILE_COUNTRIES_CACHE_STALE, TILE_COUNTRIES_MAX_Z,
-                    TILE_MAX_Z, TILE_MIN_Z)
+from config import (
+    DEFAULT_CACHE_MAX_AGE,
+    MVT_EXTENT,
+    MVT_TRANSFORMER,
+    TILE_AEDS_CACHE_STALE,
+    TILE_COUNTRIES_CACHE_MAX_AGE,
+    TILE_COUNTRIES_CACHE_STALE,
+    TILE_COUNTRIES_MAX_Z,
+    TILE_MAX_Z,
+    TILE_MIN_Z,
+)
 from middlewares.cache_middleware import make_cache_control
 from models.aed import AED
 from models.bbox import BBox
@@ -29,7 +37,7 @@ router = APIRouter()
 
 @njit(fastmath=True)
 def _tile_to_lonlat(z: int, x: int, y: int) -> tuple[float, float]:
-    n = 2.0 ** z
+    n = 2.0**z
     lon_deg = x / n * 360.0 - 180.0
     lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y / n)))
     lat_deg = math.degrees(lat_rad)
@@ -67,7 +75,8 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
         for feature in chain.from_iterable(d['features'] for d in data):
             feature['geometry'] = transform(
                 func=lambda x, y: _mvt_rescale(x, y, x_min, y_min, x_span, y_span),
-                geom=feature['geometry'])
+                geom=feature['geometry'],
+            )
 
     with print_run_time('Encoding MVT'):
         return mvt.encode(data, default_options={'extents': MVT_EXTENT})
@@ -77,7 +86,7 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
     with print_run_time('Querying countries'):
         countries = await country_state.get_countries_within(bbox)
 
-    simplify_tol = 0.5 / 2 ** z if z < TILE_MAX_Z else None
+    simplify_tol = 0.5 / 2**z if z < TILE_MAX_Z else None
     geometries = (country.geometry.simplify(simplify_tol, preserve_topology=False) for country in countries)
 
     send_stream, receive_stream = anyio.create_memory_object_stream()
@@ -92,77 +101,94 @@ async def _get_tile_country(z: int, bbox: BBox, lang: str, country_state: Countr
                 country, count = await receive_stream.receive()
                 country_count_map[country.name] = (count, abbreviate(count))
 
-    return _mvt_encode(bbox, [{
-        'name': 'countries',
-        'features': [
+    return _mvt_encode(
+        bbox,
+        [
             {
-                'geometry': geometry,
-                'properties': {
-                    'country_name': country.get_name(lang),
-                    'country_code': country.code,
-                    'point_count': country_count_map[country.name][0],
-                    'point_count_abbreviated': country_count_map[country.name][1],
-                },
-            } for country, geometry in zip(countries, geometries)
+                'name': 'countries',
+                'features': [
+                    {
+                        'geometry': geometry,
+                        'properties': {
+                            'country_name': country.get_name(lang),
+                            'country_code': country.code,
+                            'point_count': country_count_map[country.name][0],
+                            'point_count_abbreviated': country_count_map[country.name][1],
+                        },
+                    }
+                    for country, geometry in zip(countries, geometries, strict=True)
+                ],
+            },
+            {
+                'name': 'defibrillators',
+                'features': [
+                    {
+                        'geometry': Point(*country.label.position),
+                        'properties': {
+                            'country_name': country.get_name(lang),
+                            'country_code': country.code,
+                            'point_count': country_count_map[country.name][0],
+                            'point_count_abbreviated': country_count_map[country.name][1],
+                        },
+                    }
+                    for country in countries
+                ],
+            },
         ],
-    }, {
-        'name': 'defibrillators',
-        'features': [
-            {
-                'geometry': Point(*country.label.position),
-                'properties': {
-                    'country_name': country.get_name(lang),
-                    'country_code': country.code,
-                    'point_count': country_count_map[country.name][0],
-                    'point_count_abbreviated': country_count_map[country.name][1],
-                },
-            } for country in countries
-        ]
-    }])
+    )
 
 
 async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
-    group_eps = 9.8 / 2 ** z if z < TILE_MAX_Z else None
+    group_eps = 9.8 / 2**z if z < TILE_MAX_Z else None
     aeds = await aed_state.get_aeds_within(bbox.extend(0.5), group_eps)
 
-    return _mvt_encode(bbox, [{
-        'name': 'defibrillators',
-        'features': [
+    return _mvt_encode(
+        bbox,
+        [
             {
-                'geometry': Point(*aed.position),
-                'properties': {
-                    'node_id': int(aed.id),
-                    'access': aed.access,
-                },
-            } if isinstance(aed, AED) else {
-                'geometry': Point(*aed.position),
-                'properties': {
-                    'point_count': aed.count,
-                    'point_count_abbreviated': abbreviate(aed.count),
-                    'access': aed.access,
-                },
-            } for aed in aeds
-        ]
-    }])
+                'name': 'defibrillators',
+                'features': [
+                    {
+                        'geometry': Point(*aed.position),
+                        'properties': {
+                            'node_id': int(aed.id),
+                            'access': aed.access,
+                        },
+                    }
+                    if isinstance(aed, AED)
+                    else {
+                        'geometry': Point(*aed.position),
+                        'properties': {
+                            'point_count': aed.count,
+                            'point_count_abbreviated': abbreviate(aed.count),
+                            'access': aed.access,
+                        },
+                    }
+                    for aed in aeds
+                ],
+            }
+        ],
+    )
 
 
 @router.get('/tile/{z}/{x}/{y}.mvt')
 async def get_tile(
-        z: Annotated[int, Path(ge=TILE_MIN_Z, le=TILE_MAX_Z)],
-        x: Annotated[int, Path(ge=0)],
-        y: Annotated[int, Path(ge=0)],
-        country_state: CountryStateDep,
-        aed_state: AEDStateDep,
-        lang: Annotated[str, Query(min_length=2, max_length=2)] = 'default'):
+    z: Annotated[int, Path(ge=TILE_MIN_Z, le=TILE_MAX_Z)],
+    x: Annotated[int, Path(ge=0)],
+    y: Annotated[int, Path(ge=0)],
+    country_state: CountryStateDep,
+    aed_state: AEDStateDep,
+    lang: Annotated[str, Query(min_length=2, max_length=2)] = 'default',
+):
     bbox = _tile_to_bbox(z, x, y)
     assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
     assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
 
     if z <= TILE_COUNTRIES_MAX_Z:
-        bytes = await _get_tile_country(z, bbox, lang, country_state, aed_state)
+        content = await _get_tile_country(z, bbox, lang, country_state, aed_state)
         headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
     else:
-        bytes = await _get_tile_aed(z, bbox, aed_state)
+        content = await _get_tile_aed(z, bbox, aed_state)
         headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE)}
 
-    return Response(bytes, headers=headers, media_type='application/vnd.mapbox-vector-tile')
+    return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')

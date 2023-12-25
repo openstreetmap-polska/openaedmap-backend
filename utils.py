@@ -1,11 +1,12 @@
 import functools
 import time
 import traceback
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import timedelta
-from math import atan2, cos, inf, pi, radians, sin, sqrt
-from typing import Any, Generator
+from math import atan2, cos, pi, radians, sin, sqrt
+from typing import Any
 
 import anyio
 import httpx
@@ -32,10 +33,7 @@ def print_run_time(message: str | list) -> Generator[None, None, None]:
 
 
 def retry_exponential(timeout: timedelta | None, *, start: float = 1):
-    if timeout is None:
-        timeout_seconds = inf
-    else:
-        timeout_seconds = timeout.total_seconds()
+    timeout_seconds = float('inf') if timeout is None else timeout.total_seconds()
 
     def decorator(func):
         @functools.wraps(func)
@@ -55,6 +53,7 @@ def retry_exponential(timeout: timedelta | None, *, start: float = 1):
                     sleep = min(sleep * 2, 4 * 3600)  # max 4 hours
 
         return wrapper
+
     return decorator
 
 
@@ -130,7 +129,7 @@ def haversine_distance(p1: tuple[float, float], p2: tuple[float, float]) -> floa
     dlat = p2_lat - p1_lat
     dlon = p2_lon - p1_lon
 
-    a = sin(dlat / 2)**2 + cos(p1_lat) * cos(p2_lat) * sin(dlon / 2)**2
+    a = sin(dlat / 2) ** 2 + cos(p1_lat) * cos(p2_lat) * sin(dlon / 2) ** 2
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
     # distance in meters
