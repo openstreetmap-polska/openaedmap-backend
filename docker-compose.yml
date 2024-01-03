@@ -56,7 +56,7 @@ services:
       MONGO_HOST: db
 
     volumes:
-      - /mnt/data/aed/${TAG:-dev}/photos:/app/data/photos
+      - /mnt/data/${TAG:-dev}/photos:/app/data/photos
 
   cache:
     image: varnish:alpine
