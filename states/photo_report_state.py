@@ -1,8 +1,8 @@
 import secrets
+from collections.abc import Sequence
 from time import time
-from typing import Annotated, Sequence
+from typing import Annotated
 
-import anyio
 import pymongo
 from dacite import from_dict
 from fastapi import Depends
@@ -24,33 +24,36 @@ class PhotoReportState:
         if await PHOTO_REPORT_COLLECTION.find_one({'photo_id': photo_id}, projection={'_id': False}):
             return False  # already reported
 
-        await PHOTO_REPORT_COLLECTION.insert_one(as_dict(PhotoReport(
-            id=secrets.token_urlsafe(16),
-            photo_id=photo_id,
-            timestamp=time(),
-        )))
+        await PHOTO_REPORT_COLLECTION.insert_one(
+            as_dict(
+                PhotoReport(
+                    id=secrets.token_urlsafe(16),
+                    photo_id=photo_id,
+                    timestamp=time(),
+                )
+            )
+        )
 
         return True
 
     async def get_recent_reports(self, count: int = 10) -> Sequence[PhotoReport]:
-        cursor = PHOTO_REPORT_COLLECTION \
-            .find(projection={'_id': False}) \
-            .sort('timestamp', pymongo.DESCENDING) \
-            .limit(count)
+        cursor = (
+            PHOTO_REPORT_COLLECTION.find(projection={'_id': False}).sort('timestamp', pymongo.DESCENDING).limit(count)
+        )
 
         result = []
 
         async for c in cursor:
-            result.append(from_dict(PhotoReport, c))
+            result.append(from_dict(PhotoReport, c))  # noqa: PERF401
 
         return tuple(result)
 
 
-_instance=PhotoReportState()
+_instance = PhotoReportState()
 
 
 def get_photo_report_state() -> PhotoReportState:
     return _instance
 
 
-PhotoReportStateDep=Annotated[PhotoReportState, Depends(get_photo_report_state)]
+PhotoReportStateDep = Annotated[PhotoReportState, Depends(get_photo_report_state)]

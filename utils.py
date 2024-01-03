@@ -1,15 +1,14 @@
 import functools
 import time
 import traceback
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import timedelta
-from math import atan2, cos, inf, pi, radians, sin, sqrt
-from typing import Any, Generator
+from typing import Any
 
 import anyio
 import httpx
-from numba import njit
 from shapely.geometry import mapping
 
 from config import USER_AGENT
@@ -32,10 +31,7 @@ def print_run_time(message: str | list) -> Generator[None, None, None]:
 
 
 def retry_exponential(timeout: timedelta | None, *, start: float = 1):
-    if timeout is None:
-        timeout_seconds = inf
-    else:
-        timeout_seconds = timeout.total_seconds()
+    timeout_seconds = float('inf') if timeout is None else timeout.total_seconds()
 
     def decorator(func):
         @functools.wraps(func)
@@ -55,6 +51,7 @@ def retry_exponential(timeout: timedelta | None, *, start: float = 1):
                     sleep = min(sleep * 2, 4 * 3600)  # max 4 hours
 
         return wrapper
+
     return decorator
 
 
@@ -91,47 +88,3 @@ def as_dict(data) -> dict:
             d[k] = mapping(v)
 
     return d
-
-
-EARTH_RADIUS = 6371000
-CIRCUMFERENCE = 2 * pi * EARTH_RADIUS
-
-
-@njit(fastmath=True)
-def meters_to_lat(meters: float) -> float:
-    return meters / (CIRCUMFERENCE / 360)
-
-
-@njit(fastmath=True)
-def meters_to_lon(meters: float, lat: float) -> float:
-    return meters / ((CIRCUMFERENCE / 360) * cos(radians(lat)))
-
-
-@njit(fastmath=True)
-def lat_to_meters(lat: float) -> float:
-    return lat * (CIRCUMFERENCE / 360)
-
-
-@njit(fastmath=True)
-def lon_to_meters(lon: float, lat: float) -> float:
-    return lon * ((CIRCUMFERENCE / 360) * cos(radians(lat)))
-
-
-@njit(fastmath=True)
-def radians_tuple(p: tuple[float, float]) -> tuple[float, float]:
-    return (radians(p[0]), radians(p[1]))
-
-
-@njit(fastmath=True)
-def haversine_distance(p1: tuple[float, float], p2: tuple[float, float]) -> float:
-    p1_lat, p1_lon = radians_tuple(p1)
-    p2_lat, p2_lon = radians_tuple(p2)
-
-    dlat = p2_lat - p1_lat
-    dlon = p2_lon - p1_lon
-
-    a = sin(dlat / 2)**2 + cos(p1_lat) * cos(p2_lat) * sin(dlon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
-    # distance in meters
-    return c * EARTH_RADIUS

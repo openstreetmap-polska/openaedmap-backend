@@ -199,3 +199,6 @@ pyrightconfig.json
 result
 data/*
 cert/*
+
+cython_lib/*.c
+cython_lib/*.html

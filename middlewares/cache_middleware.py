@@ -44,5 +44,7 @@ def configure_cache(max_age: timedelta, stale: timedelta):
             request.state.max_age = max_age
             request.state.stale = stale
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator

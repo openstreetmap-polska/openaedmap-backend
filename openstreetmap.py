@@ -3,8 +3,7 @@ from datetime import timedelta
 import xmltodict
 from authlib.integrations.httpx_client import OAuth2Auth
 
-from config import (CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS,
-                    OPENSTREETMAP_API_URL)
+from config import CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
 from utils import get_http_client, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
@@ -44,21 +43,39 @@ class OpenStreetMap:
         )['osm']['node']
 
     async def upload_osm_change(self, osm_change: str) -> str:
-        changeset = xmltodict.unparse({'osm': {'changeset': {'tag': [
-            {'@k': k, '@v': v}
-            for k, v in DEFAULT_CHANGESET_TAGS.items()
-        ]}}})
+        changeset = xmltodict.unparse(
+            {
+                'osm': {
+                    'changeset': {
+                        'tag': [
+                            {
+                                '@k': k,
+                                '@v': v,
+                            }
+                            for k, v in DEFAULT_CHANGESET_TAGS.items()
+                        ]
+                    }
+                }
+            }
+        )
 
-        r = await self._http.put('/changeset/create', content=changeset, headers={
-            'Content-Type': 'text/xml; charset=utf-8'}, follow_redirects=False)
+        r = await self._http.put(
+            '/changeset/create',
+            content=changeset,
+            headers={'Content-Type': 'text/xml; charset=utf-8'},
+            follow_redirects=False,
+        )
         r.raise_for_status()
 
         changeset_id = r.text
         osm_change = osm_change.replace(CHANGESET_ID_PLACEHOLDER, changeset_id)
         print(f'🌐 Changeset: https://www.openstreetmap.org/changeset/{changeset_id}')
 
-        upload_resp = await self._http.post(f'/changeset/{changeset_id}/upload', content=osm_change, headers={
-            'Content-Type': 'text/xml; charset=utf-8'})
+        upload_resp = await self._http.post(
+            f'/changeset/{changeset_id}/upload',
+            content=osm_change,
+            headers={'Content-Type': 'text/xml; charset=utf-8'},
+        )
 
         r = await self._http.put(f'/changeset/{changeset_id}/close')
         r.raise_for_status()

@@ -1,11 +1,9 @@
-import traceback
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import magic
 import orjson
-from fastapi import (APIRouter, File, Form, HTTPException, Request, Response,
-                     UploadFile)
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
 
@@ -32,7 +30,15 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
 
 
 @router.post('/upload')
-async def upload(request: Request, node_id: Annotated[str, Form()], file_license: Annotated[str, Form()], file: Annotated[UploadFile, File()], oauth2_credentials: Annotated[str, Form()], aed_state: AEDStateDep, photo_state: PhotoStateDep) -> bool:
+async def upload(
+    request: Request,
+    node_id: Annotated[str, Form()],
+    file_license: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    oauth2_credentials: Annotated[str, Form()],
+    aed_state: AEDStateDep,
+    photo_state: PhotoStateDep,
+) -> bool:
     file_license = file_license.upper()
     accept_licenses = ('CC0',)
 
@@ -50,8 +56,8 @@ async def upload(request: Request, node_id: Annotated[str, Form()], file_license
 
     try:
         oauth2_credentials_ = orjson.loads(oauth2_credentials)
-    except Exception:
-        raise HTTPException(400, 'OAuth2 credentials must be a JSON object')
+    except Exception as e:
+        raise HTTPException(400, 'OAuth2 credentials must be a JSON object') from e
 
     if 'access_token' not in oauth2_credentials_:
         raise HTTPException(400, 'OAuth2 credentials must contain an access_token field')
@@ -75,22 +81,32 @@ async def upload(request: Request, node_id: Annotated[str, Form()], file_license
 
     node_xml = await osm.get_node_xml(node_id)
 
-    osm_change = update_node_tags_osm_change(node_xml, {
-        'image': photo_url,
-        'image:license': file_license,
-    })
+    osm_change = update_node_tags_osm_change(
+        node_xml,
+        {
+            'image': photo_url,
+            'image:license': file_license,
+        },
+    )
 
     await osm.upload_osm_change(osm_change)
     return True
 
 
 @router.post('/report')
-async def report(id: Annotated[str, Form()], photo_report_state: PhotoReportStateDep) -> bool:
+async def report(
+    id: Annotated[str, Form()],
+    photo_report_state: PhotoReportStateDep,
+) -> bool:
     return await photo_report_state.report_by_photo_id(id)
 
 
 @router.get('/report/rss.xml')
-async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_state: PhotoReportStateDep) -> Response:
+async def report_rss(
+    request: Request,
+    photo_state: PhotoStateDep,
+    photo_report_state: PhotoReportStateDep,
+) -> Response:
     fg = FeedGenerator()
     fg.title('AED Photo Reports')
     fg.description('This feed contains a list of recent AED photo reports')
@@ -105,10 +121,15 @@ async def report_rss(request: Request, photo_state: PhotoStateDep, photo_report_
         fe = fg.add_entry(order='append')
         fe.id(report.id)
         fe.title('🚨 Received photo report')
-        fe.content('<br>'.join((
-            f'File name: {info.path.name}',
-            f'Node: https://osm.org/node/{info.node_id}',
-        )), type='CDATA')
+        fe.content(
+            '<br>'.join(
+                (
+                    f'File name: {info.path.name}',
+                    f'Node: https://osm.org/node/{info.node_id}',
+                )
+            ),
+            type='CDATA',
+        )
         fe.link(href=upgrade_https(f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp'))
         fe.published(datetime.utcfromtimestamp(report.timestamp).astimezone(tz=UTC))
 

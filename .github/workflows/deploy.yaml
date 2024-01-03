@@ -33,6 +33,10 @@ jobs:
         run: |
           nix-shell --run "true"
 
+      - name: Compile cython
+        run: |
+          nix-shell --run "pipenv run make"
+
       - name: Build
         run: |
           echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV

@@ -1,6 +1,5 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
-from math import inf
-from typing import Iterable
 
 from models.lonlat import LonLat
 
@@ -23,13 +22,13 @@ class AEDGroup:
             'no': 5,
         }
 
-        min_access = '', inf
+        min_access = '', float('inf')
 
         for access in accesses:
             if access == 'yes':
                 return 'yes'  # early stopping
 
-            tier = tiered.get(access, inf)
+            tier = tiered.get(access, float('inf'))
             if tier < min_access[1]:
                 min_access = access, tier
 

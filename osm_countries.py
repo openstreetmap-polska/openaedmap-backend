@@ -1,4 +1,4 @@
-from typing import Sequence
+from collections.abc import Sequence
 
 import brotli
 import orjson
@@ -24,11 +24,13 @@ async def get_osm_countries() -> Sequence[OSMCountry]:
         props = feature['properties']
         geometry = feature['geometry']
 
-        result.append(OSMCountry(
-            tags=props['tags'],
-            timestamp=props['timestamp'],
-            representative_point=shape(props['representative_point']),
-            geometry=shape(geometry)
-        ))
+        result.append(
+            OSMCountry(
+                tags=props['tags'],
+                timestamp=props['timestamp'],
+                representative_point=shape(props['representative_point']),
+                geometry=shape(geometry),
+            )
+        )
 
     return tuple(result)
