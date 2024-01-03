@@ -103,7 +103,6 @@ async def _get_tile_country(z: int, bbox: BBox, country_state: CountryState, aed
                         'geometry': country.label.position.shapely,
                         'properties': {
                             'country_name': country.name,
-                            'country_names': country.names,
                             'country_code': country.code,
                             'point_count': country_count_map[country.name][0],
                             'point_count_abbreviated': country_count_map[country.name][1],
