@@ -59,19 +59,19 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh remote <<EOF
+          ssh remote <<\EOF
             set -e
-            export IMAGE_FILENAME=$(basename "${{ env.IMAGE_PATH }}")
+            image_filename=$(basename "${{ env.IMAGE_PATH }}")
 
             function cleanup {
               echo "Cleaning up"
-              rm -f "$IMAGE_FILENAME"
+              rm -f "$image_filename"
             }
 
             trap cleanup EXIT
 
             echo "Loading Docker image"
-            docker load < "$IMAGE_FILENAME"
+            docker load < "$image_filename"
 
             echo "Fetching latest changes from the git repository"
             cd "$TAG"
