@@ -58,6 +58,9 @@ let
       cython-clean
       cython-build
 
+      # Avoid linking to shell libraries during nix-build
+      unset LD_LIBRARY_PATH
+
       # Some data files require elevated permissions
       if [ -d "$PROJECT_DIR/data" ]; then
         image_path=$(sudo nix-build --no-out-link)
