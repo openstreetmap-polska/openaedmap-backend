@@ -19,27 +19,23 @@ jobs:
           echo "TAG=${{ github.head_ref || github.ref_name }}" >> $GITHUB_ENV
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v22
+        uses: cachix/install-nix-action@v24
         with:
-          nix_path: nixpkgs=channel:nixos-23.05
+          nix_path: nixpkgs=channel:nixos-23.11
           extra_nix_config: |
             trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
             substituters = https://cache.nixos.org/
 
       - name: Install dependencies
         run: |
-          nix-shell --run "true"
-
-      - name: Compile cython
-        run: |
-          nix-shell --run "pipenv run make"
+          nix-shell --run true
 
       - name: Build
         run: |
-          echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
+          echo "IMAGE_PATH=$(nix-shell --run docker-build | tail -1)" >> $GITHUB_ENV
 
       - name: Set up SSH
         run: |
@@ -61,11 +57,19 @@ jobs:
         run: |
           ssh remote <<EOF
             set -e
+            image_filename=$(basename $IMAGE_PATH)
 
-            echo "Loading docker image"
-            docker load < $(basename $IMAGE_PATH) && rm $(basename $IMAGE_PATH)
+            function cleanup {
+              echo "Cleaning up"
+              rm -f $image_filename
+            }
 
-            echo "Fetching latest changes from the repository"
+            trap cleanup EXIT
+
+            echo "Loading Docker image"
+            docker load < $image_filename
+
+            echo "Fetching latest changes from the git repository"
             cd $TAG
             git fetch origin $TAG
             git checkout $TAG

@@ -1,9 +1,9 @@
 import re
 from datetime import datetime
 
-from dateutil import tz
 from fastapi import APIRouter, HTTPException
-from timezonefinder import TimezoneFinder
+from pytz import timezone
+from tzfpy import get_tz
 
 from models.lonlat import LonLat
 from states.aed_state import AEDStateDep
@@ -11,23 +11,20 @@ from states.photo_state import PhotoStateDep
 
 router = APIRouter()
 
-tf = TimezoneFinder()
-
 photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
 
 
 def _get_timezone(lonlat: LonLat) -> tuple[str | None, str | None]:
-    timezone_name = tf.timezone_at(lng=lonlat.lon, lat=lonlat.lat)
+    timezone_name: str | None = get_tz(lonlat.lon, lonlat.lat)
+    timezone_offset = None
 
     if timezone_name:
         try:
-            dt = datetime.now(tz=tz.gettz(timezone_name))
+            dt = datetime.now(tz=timezone(timezone_name))
             offset = dt.strftime('%z')
             timezone_offset = f'UTC{offset[:3]}:{offset[3:]}'
-        except Exception:
-            timezone_offset = None
-    else:
-        timezone_offset = None
+        except Exception:  # noqa: S110
+            pass
 
     return timezone_name, timezone_offset
 

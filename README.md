@@ -35,7 +35,7 @@ It will save you lots of time and spare you from unnecessary stress.
 nix-shell
 
 # Start up the database
-make dev-start
+dev-start
 
 # Launch the web server
 uvicorn main:app
@@ -47,8 +47,8 @@ Navigate to http://localhost:8000 to access the web app locally.
 
 ```sh
 # Terminate the database
-make dev-stop
+dev-stop
 
-# Purge data
-rm -r data
+# Purge database
+dev-clean
 ```

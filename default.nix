@@ -1,28 +1,23 @@
-{ pkgsnix ? import ./pkgs.nix
-, pkgs ? pkgsnix.pkgs
-, unstable ? pkgsnix.unstable
-}:
+{ pkgs ? import <nixpkgs> { }, ... }:
 
-with pkgs; let
+let
   envTag = builtins.getEnv "TAG";
 
   shell = import ./shell.nix {
-    inherit pkgs;
-    inherit unstable;
-    isDocker = true;
+    isDevelopment = false;
   };
 
-  python-venv = buildEnv {
+  python-venv = pkgs.buildEnv {
     name = "python-venv";
     paths = [
-      (runCommand "python-venv" { } ''
+      (pkgs.runCommand "python-venv" { } ''
         mkdir -p $out/lib
-        cp -r "${./.venv/lib/python3.11/site-packages}"/* $out/lib
+        cp -r "${./.venv/lib/python3.12/site-packages}"/* $out/lib
       '')
     ];
   };
 in
-dockerTools.buildLayeredImage {
+with pkgs; dockerTools.buildLayeredImage {
   name = "backend";
   tag = if envTag != "" then envTag else "latest";
 
@@ -33,20 +28,20 @@ dockerTools.buildLayeredImage {
     mkdir tmp
     mkdir app && cd app
     cp "${./.}"/LICENSE .
-    cp "${./.}"/Makefile .
     cp "${./.}"/*.py .
     cp -r "${./.}"/api .
     cp -r "${./.}"/cython_lib .
     cp -r "${./.}"/middlewares .
     cp -r "${./.}"/models .
     cp -r "${./.}"/states .
+    export PATH="${lib.makeBinPath shell.buildInputs}":$PATH
     ${shell.shellHook}
   '';
 
   config = {
     WorkingDir = "/app";
     Env = [
-      "LD_LIBRARY_PATH=${lib.makeLibraryPath shell.buildInputs}"
+      "LD_LIBRARY_PATH=${lib.makeLibraryPath shell.libraries}"
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
