@@ -76,7 +76,7 @@ async def upload(
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
     photo_info = await photo_state.set_photo(node_id, str(osm_user['id']), file)
-    photo_url = str(request.url_for('view', id=photo_info.id))
+    photo_url = f'{request.base_url}api/v1/photos/view/{photo_info.id}.webp'
 
     node_xml = await osm.get_node_xml(node_id)
 
