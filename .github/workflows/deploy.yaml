@@ -35,7 +35,7 @@ jobs:
 
       - name: Build
         run: |
-          echo "IMAGE_PATH=$(nix-shell --pure --run docker-build | tee /dev/tty | tail -1)" >> $GITHUB_ENV
+          echo "IMAGE_PATH=$(nix-shell --run docker-build | tee /dev/fd/2 | tail -1)" >> $GITHUB_ENV
 
       - name: Set up SSH
         run: |
