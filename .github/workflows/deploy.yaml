@@ -41,7 +41,7 @@ jobs:
         run: |
           echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
 
-      - name: Set up SSH
+      - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
@@ -53,7 +53,7 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
           " > ~/.ssh/config
 
-      - name: Upload image
+      - name: Upload Docker image
         run: |
           scp "${{ env.IMAGE_PATH }}" remote:~
 
@@ -64,14 +64,14 @@ jobs:
             image_filename=$(basename "${{ env.IMAGE_PATH }}")
 
             function cleanup {
-              echo "Cleaning up"
+              echo "Cleaning up $image_filename"
               rm -f "$image_filename"
             }
 
             trap cleanup EXIT
 
             echo "Loading Docker image"
-            docker load --input "$image_filename"
+            docker load < "$image_filename"
 
             echo "Fetching latest changes from the git repository"
             cd "$TAG"
