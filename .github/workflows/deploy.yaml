@@ -64,7 +64,7 @@ jobs:
             tag="${{ env.TAG }}"
             image_filename="$(basename "${{ env.IMAGE_PATH }}")"
 
-            function cleanup {
+            cleanup() {
               echo "Cleaning up"
               rm -f "$image_filename"
             }
