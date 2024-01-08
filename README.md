@@ -31,7 +31,7 @@ It's your shortcut to seamless dependency management and reproducible environmen
 It will save you lots of time and spare you from unnecessary stress.
 
 ```sh
-# Install dependencies and packages
+# Install dependencies and enter shell
 nix-shell
 
 # Start up the database

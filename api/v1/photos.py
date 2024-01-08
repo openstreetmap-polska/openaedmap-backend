@@ -13,7 +13,6 @@ from osm_change import update_node_tags_osm_change
 from states.aed_state import AEDStateDep
 from states.photo_report_state import PhotoReportStateDep
 from states.photo_state import PhotoStateDep
-from utils import upgrade_https
 
 router = APIRouter(prefix='/photos')
 
@@ -77,7 +76,7 @@ async def upload(
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
     photo_info = await photo_state.set_photo(node_id, str(osm_user['id']), file)
-    photo_url = upgrade_https(str(request.url_for('view', id=photo_info.id)))
+    photo_url = str(request.url_for('view', id=photo_info.id))
 
     node_xml = await osm.get_node_xml(node_id)
 
@@ -110,7 +109,7 @@ async def report_rss(
     fg = FeedGenerator()
     fg.title('AED Photo Reports')
     fg.description('This feed contains a list of recent AED photo reports')
-    fg.link(href=upgrade_https(str(request.url)), rel='self')
+    fg.link(href=str(request.url), rel='self')
 
     for report in await photo_report_state.get_recent_reports():
         info = await photo_state.get_photo_by_id(report.photo_id)
@@ -130,7 +129,7 @@ async def report_rss(
             ),
             type='CDATA',
         )
-        fe.link(href=upgrade_https(f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp'))
+        fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
         fe.published(datetime.utcfromtimestamp(report.timestamp).astimezone(tz=UTC))
 
     return Response(content=fg.rss_str(pretty=True), media_type='application/rss+xml')
