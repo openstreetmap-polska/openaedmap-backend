@@ -61,7 +61,8 @@ jobs:
         run: |
           ssh remote <<\EOF
             set -e
-            image_filename=$(basename "${{ env.IMAGE_PATH }}")
+            tag="${{ env.TAG }}"
+            image_filename="$(basename "${{ env.IMAGE_PATH }}")"
 
             function cleanup {
               echo "Cleaning up"
@@ -74,12 +75,11 @@ jobs:
             docker load < "$image_filename"
 
             echo "Fetching latest changes from the git repository"
-            cd "$TAG"
-            git fetch origin "$TAG"
-            git checkout "$TAG"
-            git reset --hard "origin/$TAG"
+            cd "$tag"
+            git fetch origin "$tag"
+            git checkout "$tag"
+            git reset --hard "origin/$tag"
 
             echo "Restarting containers"
-            export TAG=$TAG
-            docker compose --env-file "envs/compose/$TAG.env" up -d
+            TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
           EOF
