@@ -55,11 +55,7 @@ let
     # -- Misc
     (writeShellScriptBin "docker-build" ''
       set -e
-      cython-clean
-      cython-build
-
-      # Avoid linking to shell libraries during nix-build
-      unset LD_LIBRARY_PATH
+      cython-clean && cython-build
 
       # Some data files require elevated permissions
       if [ -d "$PROJECT_DIR/data" ]; then
@@ -68,12 +64,7 @@ let
         image_path=$(nix-build --no-out-link)
       fi
 
-      # Load image into Docker if available, otherwise print path
-      if command -v docker > /dev/null; then
-        docker load < "$image_path"
-      else
-        echo $image_path
-      fi
+      docker load < "$image_path"
     '')
   ];
 
