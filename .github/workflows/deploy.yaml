@@ -55,13 +55,13 @@ jobs:
 
       - name: Upload image
         run: |
-          scp $IMAGE_PATH remote:~
+          scp "${{ env.IMAGE_PATH }}" remote:~
 
       - name: Deploy
         run: |
           ssh remote <<EOF
             set -e
-            image_filename=$(basename "$IMAGE_PATH")
+            image_filename=$(basename "${{ env.IMAGE_PATH }}")
 
             function cleanup {
               echo "Cleaning up"
