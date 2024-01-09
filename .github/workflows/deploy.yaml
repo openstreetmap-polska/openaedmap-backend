@@ -65,6 +65,7 @@ jobs:
             image_filename="$(basename "${{ env.IMAGE_PATH }}")"
 
             cleanup() {
+              cd ~
               echo "Cleaning up"
               rm -f "$image_filename"
             }
