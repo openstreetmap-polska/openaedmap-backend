@@ -30,11 +30,12 @@ with pkgs; dockerTools.buildLayeredImage {
     cp "${./.}"/LICENSE .
     cp "${./.}"/*.py .
     cp -r "${./.}"/api .
-    cp -r "${./.}"/cython_lib .
     cp -r "${./.}"/middlewares .
     cp -r "${./.}"/models .
     cp -r "${./.}"/states .
-    export PATH="${lib.makeBinPath shell.buildInputs}":$PATH
+    mkdir cython_lib
+    cp "${./.}"/cython_lib/*.py cython_lib
+    export PATH="${lib.makeBinPath shell.buildInputs}:$PATH"
     ${shell.shellHook}
   '';
 
