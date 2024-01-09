@@ -1,5 +1,7 @@
 :443 {
-    reverse_proxy cache:80
+    reverse_proxy cache:80 {
+        header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+    }
 
     tls /cert/ssl.crt /cert/ssl.key {
         client_auth {

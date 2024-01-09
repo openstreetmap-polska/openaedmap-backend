@@ -12,7 +12,8 @@ setup(
                 '*',
                 ['cython_lib/*.py'],
                 extra_compile_args=[
-                    '-march=x86-64',
+                    '-march=x86-64-v2',
+                    '-mtune=generic',
                     '-ffast-math',
                     '-fopenmp',
                     '-flto=auto',

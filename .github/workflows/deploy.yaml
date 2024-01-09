@@ -19,29 +19,29 @@ jobs:
           echo "TAG=${{ github.head_ref || github.ref_name }}" >> $GITHUB_ENV
 
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v22
+        uses: cachix/install-nix-action@v24
         with:
-          nix_path: nixpkgs=channel:nixos-23.05
+          nix_path: nixpkgs=channel:nixpkgs-23.11-darwin
           extra_nix_config: |
             trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
             substituters = https://cache.nixos.org/
 
       - name: Install dependencies
         run: |
-          nix-shell --run "true"
+          nix-shell --pure --run true
 
-      - name: Compile cython
+      - name: Build Cython
         run: |
-          nix-shell --run "pipenv run make"
+          nix-shell --pure --run cython-build
 
-      - name: Build
+      - name: Build Docker image
         run: |
           echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
 
-      - name: Set up SSH
+      - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
@@ -53,25 +53,34 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
           " > ~/.ssh/config
 
-      - name: Upload image
+      - name: Upload Docker image
         run: |
-          scp $IMAGE_PATH remote:~
+          scp "${{ env.IMAGE_PATH }}" remote:~
 
       - name: Deploy
         run: |
-          ssh remote <<EOF
+          ssh remote <<\EOF
             set -e
+            tag="${{ env.TAG }}"
+            image_filename="$(basename "${{ env.IMAGE_PATH }}")"
 
-            echo "Loading docker image"
-            docker load < $(basename $IMAGE_PATH) && rm $(basename $IMAGE_PATH)
+            cleanup() {
+              cd ~
+              echo "Cleaning up"
+              rm -f "$image_filename"
+            }
 
-            echo "Fetching latest changes from the repository"
-            cd $TAG
-            git fetch origin $TAG
-            git checkout $TAG
-            git reset --hard origin/$TAG
+            trap cleanup EXIT
+
+            echo "Loading Docker image"
+            docker load < "$image_filename"
+
+            echo "Fetching latest changes from the git repository"
+            cd "$tag"
+            git fetch origin "$tag"
+            git checkout "$tag"
+            git reset --hard "origin/$tag"
 
             echo "Restarting containers"
-            export TAG=$TAG
-            docker compose --env-file envs/compose/$TAG.env up -d
+            TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
           EOF
