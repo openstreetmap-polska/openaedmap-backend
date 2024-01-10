@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-import brotli
+import brotlicffi as brotli
 import orjson
 from shapely.geometry import shape
 

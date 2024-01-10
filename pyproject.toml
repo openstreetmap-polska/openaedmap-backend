@@ -36,6 +36,7 @@ uvicorn = {extras = ["standard"], version = "^0.25.0"}
 xmltodict = "^0.13.0"
 tzfpy = "^0.15.3"
 pytz = "^2023.3.post1"
+brotlicffi = "^1.1.0.0"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
