@@ -18,10 +18,7 @@ USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
-COUNTRIES_GEOJSON_URL = (
-    'https://raw.githubusercontent.com/Zaczero/osm-countries-geojson/main/geojson/osm-countries-0-01.geojson.br'
-)
-
+COUNTRIES_GEOJSON_URL = 'https://osm-countries-geojson.monicz.dev/osm-countries-0-01.geojson.br'
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
