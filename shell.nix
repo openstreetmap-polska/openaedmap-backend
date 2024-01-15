@@ -3,7 +3,7 @@
 let
   # Currently using nixpkgs-23.11-darwin
   # Get latest hashes from https://status.nixos.org/
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/207b14c6bd1065255e6ecffcfe0c36a7b54f8e48.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/c327647a296df737bd187bd5fa51a62ee548d5ab.tar.gz") { };
 
   libraries' = with pkgs; [
     # Base libraries
@@ -81,6 +81,14 @@ let
     source .venv/bin/activate
 
     export LD_LIBRARY_PATH="${lib.makeLibraryPath libraries'}"
+
+    # Development environment variables
+    if [ -f .env ]; then
+      echo "Loading .env file"
+      set -o allexport
+      source .env set
+      +o allexport
+    fi
   '' + lib.optionalString (!isDevelopment) ''
     make-version
   '';
