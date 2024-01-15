@@ -32,7 +32,7 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
     return FileResponse(info.path)
 
 
-@router.get('/proxy/{url_encoded}')
+@router.get('/proxy/{url_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
 async def proxy(request: Request, url_encoded: str) -> FileResponse:
     # NOTE: ideally we would verify whether url is not a private resource
