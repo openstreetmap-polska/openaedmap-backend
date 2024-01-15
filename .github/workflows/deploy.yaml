@@ -33,7 +33,7 @@ jobs:
         run: |
           nix-shell --pure --run true
 
-      - name: Build Cython
+      - name: Build Cython modules
         run: |
           nix-shell --pure --run cython-build
 
@@ -57,7 +57,7 @@ jobs:
         run: |
           scp "${{ env.IMAGE_PATH }}" remote:~
 
-      - name: Deploy
+      - name: Deploy on remote
         run: |
           ssh remote <<\EOF
             set -e
