@@ -31,40 +31,36 @@ let
     # Scripts
     # -- Cython
     (writeShellScriptBin "cython-build" ''
-      python "$PROJECT_DIR/setup.py" build_ext --build-lib "$PROJECT_DIR/cython_lib"
+      python setup.py build_ext --build-lib cython_lib
     '')
     (writeShellScriptBin "cython-clean" ''
-      rm -rf "$PROJECT_DIR/build/" "$PROJECT_DIR/cython_lib/"*{.c,.html,.so}
+      rm -rf build "cython_lib/"*{.c,.html,.so}
     '')
 
     # -- Docker (dev)
     (writeShellScriptBin "dev-start" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml up -d
     '')
     (writeShellScriptBin "dev-stop" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml down
     '')
     (writeShellScriptBin "dev-logs" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml logs -f
     '')
     (writeShellScriptBin "dev-clean" ''
       dev-stop
-      rm -rf data/db
+      [ -d data/db ] && sudo rm -r data/db
     '')
 
     # -- Misc
     (writeShellScriptBin "docker-build" ''
       set -e
       cython-clean && cython-build
-
-      # Some data files require elevated permissions
-      if [ -d "$PROJECT_DIR/data" ]; then
-        image_path=$(sudo nix-build --no-out-link)
-      else
-        image_path=$(nix-build --no-out-link)
-      fi
-
-      docker load < "$image_path"
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
+      docker load < "$(sudo nix-build --no-out-link)"
     '')
   ];
 
