@@ -37,7 +37,7 @@ jobs:
         run: |
           nix-shell --pure --run cython-build
 
-      - name: Build Docker image
+      - name: Build container image
         run: |
           echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
 
@@ -53,7 +53,7 @@ jobs:
             IdentityFile ~/.ssh/id_rsa
           " > ~/.ssh/config
 
-      - name: Upload Docker image
+      - name: Upload container image
         run: |
           scp "${{ env.IMAGE_PATH }}" remote:~
 
