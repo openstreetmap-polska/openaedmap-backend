@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from typing import Annotated
+from urllib.parse import unquote_plus
 
 import magic
 import orjson
@@ -7,12 +9,14 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
 
+from config import IMAGE_CONTENT_TYPES, REMOTE_IMAGE_MAX_FILE_SIZE
 from middlewares.cache_middleware import configure_cache
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
 from osm_change import update_node_tags_osm_change
 from states.aed_state import AEDStateDep
 from states.photo_report_state import PhotoReportStateDep
 from states.photo_state import PhotoStateDep
+from utils import get_http_client
 
 router = APIRouter(prefix='/photos')
 
@@ -26,6 +30,35 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
         raise HTTPException(404, f'Photo {id!r} not found')
 
     return FileResponse(info.path)
+
+
+@router.get('/proxy/{url_encoded:path}')
+@configure_cache(timedelta(days=7), stale=timedelta(days=7))
+async def proxy(request: Request, url_encoded: str) -> FileResponse:
+    # NOTE: ideally we would verify whether url is not a private resource
+    async with get_http_client() as http:
+        r = await http.get(unquote_plus(url_encoded))
+        r.raise_for_status()
+
+    # Early detection of unsupported types
+    content_type = r.headers.get('Content-Type')
+    if content_type and content_type not in IMAGE_CONTENT_TYPES:
+        raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
+
+    with BytesIO() as buffer:
+        async for chunk in r.aiter_bytes(chunk_size=1024 * 1024):
+            buffer.write(chunk)
+            if buffer.tell() > REMOTE_IMAGE_MAX_FILE_SIZE:
+                raise HTTPException(500, f'File is too large, max allowed size is {REMOTE_IMAGE_MAX_FILE_SIZE} bytes')
+
+        file = buffer.getvalue()
+
+    # Check if file type is supported
+    content_type = magic.from_buffer(file[:2048], mime=True)
+    if content_type not in IMAGE_CONTENT_TYPES:
+        raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
+
+    return Response(content=file, media_type=content_type)
 
 
 @router.post('/upload')
@@ -48,10 +81,9 @@ async def upload(
         raise HTTPException(400, 'File must not be empty')
 
     content_type = magic.from_buffer(file.file.read(2048), mime=True)
-    accept_content_types = ('image/jpeg', 'image/png', 'image/webp')
 
-    if content_type not in accept_content_types:
-        raise HTTPException(400, f'Unsupported file type {content_type!r}, must be one of {accept_content_types}')
+    if content_type not in IMAGE_CONTENT_TYPES:
+        raise HTTPException(400, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
     try:
         oauth2_credentials_ = orjson.loads(oauth2_credentials)

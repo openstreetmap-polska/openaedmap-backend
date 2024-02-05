@@ -3,7 +3,7 @@
 let
   # Currently using nixpkgs-23.11-darwin
   # Get latest hashes from https://status.nixos.org/
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/207b14c6bd1065255e6ecffcfe0c36a7b54f8e48.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/c327647a296df737bd187bd5fa51a62ee548d5ab.tar.gz") { };
 
   libraries' = with pkgs; [
     # Base libraries
@@ -31,40 +31,36 @@ let
     # Scripts
     # -- Cython
     (writeShellScriptBin "cython-build" ''
-      python "$PROJECT_DIR/setup.py" build_ext --build-lib "$PROJECT_DIR/cython_lib"
+      python setup.py build_ext --build-lib cython_lib
     '')
     (writeShellScriptBin "cython-clean" ''
-      rm -rf "$PROJECT_DIR/build/" "$PROJECT_DIR/cython_lib/"*{.c,.html,.so}
+      rm -rf build "cython_lib/"*{.c,.html,.so}
     '')
 
     # -- Docker (dev)
     (writeShellScriptBin "dev-start" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml up -d
     '')
     (writeShellScriptBin "dev-stop" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml down
     '')
     (writeShellScriptBin "dev-logs" ''
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker compose -f docker-compose.dev.yml logs -f
     '')
     (writeShellScriptBin "dev-clean" ''
       dev-stop
-      rm -rf data/db
+      [ -d data/db ] && sudo rm -r data/db
     '')
 
     # -- Misc
     (writeShellScriptBin "docker-build" ''
       set -e
       cython-clean && cython-build
-
-      # Some data files require elevated permissions
-      if [ -d "$PROJECT_DIR/data" ]; then
-        image_path=$(sudo nix-build --no-out-link)
-      else
-        image_path=$(nix-build --no-out-link)
-      fi
-
-      docker load < "$image_path"
+      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
+      docker load < "$(sudo nix-build --no-out-link)"
     '')
   ];
 
@@ -81,6 +77,14 @@ let
     source .venv/bin/activate
 
     export LD_LIBRARY_PATH="${lib.makeLibraryPath libraries'}"
+
+    # Development environment variables
+    if [ -f .env ]; then
+      echo "Loading .env file"
+      set -o allexport
+      source .env set
+      +o allexport
+    fi
   '' + lib.optionalString (!isDevelopment) ''
     make-version
   '';

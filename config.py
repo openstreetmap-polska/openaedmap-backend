@@ -9,7 +9,7 @@ from pymongo import IndexModel
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.4'
+VERSION = '2.5'
 VERSION_TIMESTAMP = 0
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
@@ -50,8 +50,11 @@ MVT_PROJ = 'epsg:3857'
 MVT_EXTENT = 4096
 MVT_TRANSFORMER = Transformer.from_crs(OSM_PROJ, MVT_PROJ, always_xy=True)
 
+IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 IMAGE_LIMIT_PIXELS = 6 * 1000 * 1000  # 6 MP (e.g., 3000x2000)
 IMAGE_MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB
+
+REMOTE_IMAGE_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 DATA_DIR = Path('data')
 PHOTOS_DIR = DATA_DIR / 'photos'

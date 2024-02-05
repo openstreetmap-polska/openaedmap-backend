@@ -2,23 +2,15 @@ version: "3"
 
 services:
   db:
-    image: mongo
+    image: docker.io/library/mongo
     restart: unless-stopped
-    command:
-      [
-        "mongod",
-        "--bind_ip_all",
-        "--setParameter",
-        "transactionLifetimeLimitSeconds=90",
-        "--replSet",
-        "rs0",
-      ]
+    command: ["mongod", "--bind_ip_all", "--setParameter", "transactionLifetimeLimitSeconds=90", "--replSet", "rs0"]
 
     volumes:
       - ./data/db:/data/db
 
   db-setup:
-    image: mongo
+    image: docker.io/library/mongo
     entrypoint: ["/bin/sh", "/mongo-init-replica.sh"]
     command: ["db:27017"]
 
@@ -59,18 +51,10 @@ services:
       - /mnt/data/${TAG:-dev}/photos:/app/data/photos
 
   cache:
-    image: varnish:alpine
+    image: docker.io/library/varnish:alpine
     restart: unless-stopped
     user: root
-    command:
-      [
-        "varnishd",
-        "-F",
-        "-f",
-        "/etc/varnish/default.vcl",
-        "-s",
-        "file,/var/lib/varnish/varnish_storage.bin,2G",
-      ]
+    command: ["varnishd", "-F", "-f", "/etc/varnish/default.vcl", "-s", "file,/var/lib/varnish/varnish_storage.bin,2G"]
 
     depends_on:
       - app
