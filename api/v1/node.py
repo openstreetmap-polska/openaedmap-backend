@@ -1,11 +1,12 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
 from pytz import timezone
 from tzfpy import get_tz
 
+from middlewares.cache_middleware import configure_cache
 from models.lonlat import LonLat
 from states.aed_state import AEDStateDep
 from states.photo_state import PhotoStateDep
@@ -30,20 +31,8 @@ def _get_timezone(lonlat: LonLat) -> tuple[str | None, str | None]:
     return timezone_name, timezone_offset
 
 
-@router.get('/node/{node_id}')
-async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoStateDep):
-    aed = await aed_state.get_aed_by_id(node_id)
-
-    if aed is None:
-        raise HTTPException(404, f'Node {node_id!r} not found')
-
-    timezone_name, timezone_offset = _get_timezone(aed.position)
-    timezone_dict = {
-        '@timezone_name': timezone_name,
-        '@timezone_offset': timezone_offset,
-    }
-
-    image_url = aed.tags.get('image', '')
+async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> dict:
+    image_url: str = tags.get('image', '')
 
     if (
         image_url
@@ -51,20 +40,46 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
         and (photo_id := photo_id_match.group('id'))
         and (photo_info := await photo_state.get_photo_by_id(photo_id))
     ):
-        photo_dict = {
+        return {
             '@photo_id': photo_info.id,
             '@photo_url': f'/api/v1/photos/view/{photo_info.id}.webp',
         }
-    elif image_url:
-        photo_dict = {
+
+    if image_url:
+        return {
             '@photo_id': None,
-            '@photo_url': f'/api/v1/photos/proxy/{quote_plus(image_url)}',
+            '@photo_url': f'/api/v1/photos/proxy/direct/{quote_plus(image_url)}',
         }
-    else:
-        photo_dict = {
+
+    wikimedia_commons: str = tags.get('wikimedia_commons', '')
+
+    if wikimedia_commons:
+        return {
             '@photo_id': None,
-            '@photo_url': None,
+            '@photo_url': f'/api/v1/photos/proxy/wikimedia-commons/{quote_plus(wikimedia_commons)}',
         }
+
+    return {
+        '@photo_id': None,
+        '@photo_url': None,
+    }
+
+
+@router.get('/node/{node_id}')
+@configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
+async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoStateDep):
+    aed = await aed_state.get_aed_by_id(node_id)
+
+    if aed is None:
+        raise HTTPException(404, f'Node {node_id!r} not found')
+
+    photo_dict = await _get_image_data(aed.tags, photo_state)
+
+    timezone_name, timezone_offset = _get_timezone(aed.position)
+    timezone_dict = {
+        '@timezone_name': timezone_name,
+        '@timezone_offset': timezone_offset,
+    }
 
     return {
         'version': 0.6,

@@ -2,13 +2,14 @@
 
 let
   # Currently using nixpkgs-23.11-darwin
-  # Get latest hashes from https://status.nixos.org/
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/c327647a296df737bd187bd5fa51a62ee548d5ab.tar.gz") { };
+  # Update with `nixpkgs-update` command
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/9d7a44754fae79c6b0821cbb0407418f79d24cc0.tar.gz") { };
 
   libraries' = with pkgs; [
     # Base libraries
     stdenv.cc.cc.lib
     file.out
+    libxml2.out
     zlib.out
   ];
 
@@ -56,6 +57,12 @@ let
     '')
 
     # -- Misc
+    (writeShellScriptBin "nixpkgs-update" ''
+      set -e
+      hash=$(git ls-remote https://github.com/NixOS/nixpkgs nixpkgs-23.11-darwin | cut -f 1)
+      sed -i -E "s|/nixpkgs/archive/[0-9a-f]{40}\.tar\.gz|/nixpkgs/archive/$hash.tar.gz|" shell.nix
+      echo "Nixpkgs updated to $hash"
+    '')
     (writeShellScriptBin "docker-build" ''
       set -e
       cython-clean && cython-build
@@ -64,9 +71,7 @@ let
     '')
   ];
 
-  shell' = with pkgs; ''
-    export PROJECT_DIR="$(pwd)"
-  '' + lib.optionalString isDevelopment ''
+  shell' = with pkgs; lib.optionalString isDevelopment ''
     [ ! -e .venv/bin/python ] && [ -h .venv/bin/python ] && rm -r .venv
 
     echo "Installing Python dependencies"
