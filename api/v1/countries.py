@@ -3,7 +3,7 @@ from typing import Annotated
 
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-from fastapi import APIRouter, Path, Request, Response
+from fastapi import APIRouter, Path, Response
 from shapely.geometry import mapping
 
 from middlewares.cache_middleware import configure_cache
@@ -22,7 +22,6 @@ async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stre
 @router.get('/names')
 @configure_cache(timedelta(hours=1), stale=timedelta(days=7))
 async def get_names(
-    request: Request,
     country_state: CountryStateDep,
     aed_state: AEDStateDep,
     language: str | None = None,
@@ -66,7 +65,6 @@ async def get_names(
 @router.get('/{country_code}.geojson')
 @configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
 async def get_geojson(
-    request: Request,
     response: Response,
     country_code: Annotated[str, Path(min_length=2, max_length=5)],
     country_state: CountryStateDep,

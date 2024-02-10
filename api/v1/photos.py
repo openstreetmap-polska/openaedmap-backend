@@ -5,6 +5,7 @@ from urllib.parse import unquote_plus
 
 import magic
 import orjson
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
@@ -21,23 +22,10 @@ from utils import get_http_client
 router = APIRouter(prefix='/photos')
 
 
-@router.get('/view/{id}.webp')
-@configure_cache(timedelta(days=365), stale=timedelta(days=365))
-async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileResponse:
-    info = await photo_state.get_photo_by_id(id)
-
-    if info is None:
-        raise HTTPException(404, f'Photo {id!r} not found')
-
-    return FileResponse(info.path)
-
-
-@router.get('/proxy/{url_encoded:path}')
-@configure_cache(timedelta(days=7), stale=timedelta(days=7))
-async def proxy(request: Request, url_encoded: str) -> FileResponse:
+async def _fetch_image(url: str) -> tuple[bytes, str]:
     # NOTE: ideally we would verify whether url is not a private resource
     async with get_http_client() as http:
-        r = await http.get(unquote_plus(url_encoded))
+        r = await http.get(url)
         r.raise_for_status()
 
     # Early detection of unsupported types
@@ -58,7 +46,43 @@ async def proxy(request: Request, url_encoded: str) -> FileResponse:
     if content_type not in IMAGE_CONTENT_TYPES:
         raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
-    return Response(content=file, media_type=content_type)
+    return file, content_type
+
+
+@router.get('/view/{id}.webp')
+@configure_cache(timedelta(days=365), stale=timedelta(days=365))
+async def view(id: str, photo_state: PhotoStateDep) -> FileResponse:
+    info = await photo_state.get_photo_by_id(id)
+
+    if info is None:
+        raise HTTPException(404, f'Photo {id!r} not found')
+
+    return FileResponse(info.path)
+
+
+@router.get('/proxy/direct/{url_encoded:path}')
+@configure_cache(timedelta(days=7), stale=timedelta(days=7))
+async def proxy_direct(url_encoded: str) -> FileResponse:
+    file, content_type = await _fetch_image(unquote_plus(url_encoded))
+    return Response(file, media_type=content_type)
+
+
+@router.get('/proxy/wikimedia-commons/{path_encoded:path}')
+@configure_cache(timedelta(days=7), stale=timedelta(days=7))
+async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
+    async with get_http_client() as http:
+        url = f'https://commons.wikimedia.org/wiki/{unquote_plus(path_encoded)}'
+        r = await http.get(url)
+        r.raise_for_status()
+
+    bs = BeautifulSoup(r.text, 'lxml')
+    og_image = bs.find('meta', property='og:image')
+    if not og_image:
+        raise HTTPException(404, 'Missing og:image meta tag')
+
+    image_url = og_image['content']
+    file, content_type = await _fetch_image(image_url)
+    return Response(file, media_type=content_type)
 
 
 @router.post('/upload')
@@ -76,12 +100,10 @@ async def upload(
 
     if file_license not in accept_licenses:
         raise HTTPException(400, f'Unsupported license {file_license!r}, must be one of {accept_licenses}')
-
     if file.size <= 0:
         raise HTTPException(400, 'File must not be empty')
 
     content_type = magic.from_buffer(file.file.read(2048), mime=True)
-
     if content_type not in IMAGE_CONTENT_TYPES:
         raise HTTPException(400, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
@@ -94,13 +116,11 @@ async def upload(
         raise HTTPException(400, 'OAuth2 credentials must contain an access_token field')
 
     aed = await aed_state.get_aed_by_id(node_id)
-
     if aed is None:
         raise HTTPException(404, f'Node {node_id!r} not found, perhaps it is not an AED?')
 
     osm = OpenStreetMap(oauth2_credentials_)
     osm_user = await osm.get_authorized_user()
-
     if osm_user is None:
         raise HTTPException(401, 'OAuth2 credentials are invalid')
 
