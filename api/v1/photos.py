@@ -51,7 +51,7 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
 
 @router.get('/view/{id}.webp')
 @configure_cache(timedelta(days=365), stale=timedelta(days=365))
-async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileResponse:
+async def view(id: str, photo_state: PhotoStateDep) -> FileResponse:
     info = await photo_state.get_photo_by_id(id)
 
     if info is None:
@@ -62,14 +62,14 @@ async def view(request: Request, id: str, photo_state: PhotoStateDep) -> FileRes
 
 @router.get('/proxy/direct/{url_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_direct(request: Request, url_encoded: str) -> FileResponse:
+async def proxy_direct(url_encoded: str) -> FileResponse:
     file, content_type = await _fetch_image(unquote_plus(url_encoded))
     return Response(file, media_type=content_type)
 
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_wikimedia_commons(request: Request, path_encoded: str) -> FileResponse:
+async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
     async with get_http_client() as http:
         url = f'https://commons.wikimedia.org/wiki/{unquote_plus(path_encoded)}'
         r = await http.get(url)
