@@ -49,7 +49,7 @@ with pkgs; dockerTools.buildLayeredImage {
     Volumes = {
       "/app/data/photos" = { };
     };
-    Entrypoint = [ "python" "-m" "hypercorn" "main:app" ];
-    Cmd = [ "--bind" "0.0.0.0" ];
+    Entrypoint = [ "python" "-m" "uvicorn" "main:app" ];
+    Cmd = [ "--host" "0.0.0.0" ];
   };
 }

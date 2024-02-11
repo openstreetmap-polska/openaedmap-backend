@@ -25,18 +25,17 @@ services:
     restart: unless-stopped
     command:
       [
-        "--bind",
+        "--host",
         "0.0.0.0",
-        "--access-logfile",
-        "-",
         "--workers",
         "${WORKERS:-1}",
-        "--worker-class",
-        "uvloop",
-        "--keep-alive",
+        "--timeout-keep-alive",
         "300",
-        "--graceful-timeout",
+        "--timeout-graceful-shutdown",
         "5",
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
       ]
 
     depends_on:
@@ -55,17 +54,7 @@ services:
     image: docker.io/library/varnish:alpine
     restart: unless-stopped
     user: root
-    command:
-      [
-        "varnishd",
-        "-F",
-        "-f",
-        "/etc/varnish/default.vcl",
-        "-s",
-        "file,/var/lib/varnish/varnish_storage.bin,2G",
-        "-p",
-        "feature=+http2",
-      ]
+    command: ["varnishd", "-F", "-f", "/etc/varnish/default.vcl", "-s", "file,/var/lib/varnish/varnish_storage.bin,2G"]
 
     depends_on:
       - app

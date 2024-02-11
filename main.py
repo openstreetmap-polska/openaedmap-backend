@@ -4,7 +4,6 @@ from datetime import timedelta
 import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from hypercorn.middleware import ProxyFixMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import api.v1.api as api
@@ -54,5 +53,3 @@ app.add_middleware(
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds()),
 )
-
-app = ProxyFixMiddleware(app)
