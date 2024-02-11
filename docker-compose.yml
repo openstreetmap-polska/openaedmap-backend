@@ -27,8 +27,6 @@ services:
       [
         "--bind",
         "0.0.0.0",
-        "--access-logfile",
-        "-",
         "--workers",
         "${WORKERS:-1}",
         "--worker-class",

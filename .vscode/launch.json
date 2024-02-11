@@ -8,8 +8,6 @@
             "module": "hypercorn",
             "args": [
                 "main:app",
-                "--access-logfile",
-                "-",
                 "--workers",
                 "1",
                 "--worker-class",
