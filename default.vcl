@@ -18,9 +18,6 @@ sub vcl_recv {
 }
 
 sub vcl_backend_response {
-    # compress responses before storing them
-    set beresp.do_gzip = true;
-
     # disable any caching by default
     set beresp.ttl = 0s;
     set beresp.grace = 0s;
