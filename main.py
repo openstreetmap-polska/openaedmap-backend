@@ -4,7 +4,7 @@ from datetime import timedelta
 import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
+from hypercorn.middleware import ProxyFixMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import api.v1.api as api
@@ -19,7 +19,7 @@ from states.worker_state import WorkerStateEnum, get_worker_state
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_):
     worker_state = get_worker_state()
     await worker_state.ainit()
 
@@ -54,4 +54,5 @@ app.add_middleware(
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds()),
 )
-app.add_middleware(GZipMiddleware, compresslevel=6)
+
+app = ProxyFixMiddleware(app)
