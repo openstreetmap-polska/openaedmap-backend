@@ -83,4 +83,7 @@ jobs:
 
             echo "Restarting containers"
             TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
+
+            echo "Pruning dangling images"
+            docker image prune -f
           EOF
