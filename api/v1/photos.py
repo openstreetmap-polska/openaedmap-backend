@@ -63,16 +63,24 @@ async def view(id: str, photo_state: PhotoStateDep) -> FileResponse:
 @router.get('/proxy/direct/{url_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_direct(url_encoded: str) -> FileResponse:
-    file, content_type = await _fetch_image(unquote_plus(url_encoded))
-    return Response(file, media_type=content_type)
+    url = unquote_plus(url_encoded)
+    file, content_type = await _fetch_image(url)
+    return Response(
+        file,
+        media_type=content_type,
+        headers={
+            'X-Image-Source': url,
+        },
+    )
 
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
+    meta_url = f'https://commons.wikimedia.org/wiki/{unquote_plus(path_encoded)}'
+
     async with get_http_client() as http:
-        url = f'https://commons.wikimedia.org/wiki/{unquote_plus(path_encoded)}'
-        r = await http.get(url)
+        r = await http.get(meta_url)
         r.raise_for_status()
 
     bs = BeautifulSoup(r.text, 'lxml')
@@ -82,7 +90,13 @@ async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
 
     image_url = og_image['content']
     file, content_type = await _fetch_image(image_url)
-    return Response(file, media_type=content_type)
+    return Response(
+        file,
+        media_type=content_type,
+        headers={
+            'X-Image-Source': meta_url,
+        },
+    )
 
 
 @router.post('/upload')
