@@ -138,7 +138,7 @@ def _process_action(action: dict) -> Iterable[AED | str]:
             return node_id
 
     def _process_delete(node: dict) -> str:
-        node_id = str(node['@id'])
+        node_id = int(node['@id'])
         return node_id
 
     if action['@type'] in ('create', 'modify'):
@@ -270,7 +270,7 @@ class AEDState:
 
         return tuple(result)
 
-    async def get_aed_by_id(self, aed_id: str) -> AED | None:
+    async def get_aed_by_id(self, aed_id: int) -> AED | None:
         doc = await AED_COLLECTION.find_one({'id': aed_id}, projection={'_id': False})
         return from_dict(AED, doc) if doc else None
 

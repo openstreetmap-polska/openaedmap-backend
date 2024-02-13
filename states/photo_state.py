@@ -4,7 +4,6 @@ from time import time
 from typing import Annotated
 
 import anyio
-import pymongo
 from dacite import from_dict
 from fastapi import Depends, UploadFile
 from PIL import Image, ImageOps
@@ -90,36 +89,20 @@ class PhotoState:
 
         return info
 
-    async def get_photo_by_node_id(self, node_id: str) -> PhotoInfo | None:
-        cursor = PHOTO_COLLECTION.find(
-            {'node_id': node_id},
-            projection={'_id': False},
-        ).sort('timestamp', pymongo.DESCENDING)
-
-        async for c in cursor:
-            info = from_dict(PhotoInfo, c)
-
-            # find newest, non-deleted photo
-            # NOTE: maybe delete missing photos from database? if at least one successful
-            if await info.path.is_file():
-                return info
-
-        return None
-
-    async def set_photo(self, node_id: str, user_id: str, file: UploadFile) -> PhotoInfo:
+    async def set_photo(self, node_id: int, user_id: int, file: UploadFile) -> PhotoInfo:
         info = PhotoInfo(
             id=secrets.token_urlsafe(16),
-            node_id=node_id,
-            user_id=user_id,
+            node_id=str(node_id),
+            user_id=str(user_id),
             timestamp=time(),
         )
 
         img = Image.open(file.file)
-        img = await anyio.to_thread.run_sync(ImageOps.exif_transpose, img)
-        img = await anyio.to_thread.run_sync(_resize_image, img)
-        img_b = await anyio.to_thread.run_sync(_optimize_image, img)
+        img = ImageOps.exif_transpose(img)
+        img = _resize_image(img)
+        img_bytes = await anyio.to_thread.run_sync(_optimize_image, img)
 
-        await info.path.write_bytes(img_b)
+        await info.path.write_bytes(img_bytes)
         await PHOTO_COLLECTION.insert_one(as_dict(info))
         return info
 

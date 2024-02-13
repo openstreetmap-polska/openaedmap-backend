@@ -28,7 +28,7 @@ class OpenStreetMap:
         return r.json()['user']
 
     @retry_exponential(timedelta(seconds=10))
-    async def get_node_xml(self, node_id: str) -> dict | None:
+    async def get_node_xml(self, node_id: int) -> dict | None:
         r = await self._http.get(f'/node/{node_id}')
 
         if r.status_code in (404, 410):
