@@ -21,7 +21,6 @@ let
     # -- Misc
     (writeShellScriptBin "make-version" ''
       sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
-      sed -i -r "s|VERSION_TIMESTAMP = ([0-9.]+)|VERSION_TIMESTAMP = $(date +%s)|g" config.py
     '')
   ] ++ lib.optionals isDevelopment [
     # Development packages

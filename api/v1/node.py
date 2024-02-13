@@ -72,11 +72,11 @@ async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> d
 
 @router.get('/node/{node_id}')
 @configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
-async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoStateDep):
+async def get_node(node_id: int, aed_state: AEDStateDep, photo_state: PhotoStateDep):
     aed = await aed_state.get_aed_by_id(node_id)
 
     if aed is None:
-        raise HTTPException(404, f'Node {node_id!r} not found')
+        raise HTTPException(404, f'Node {node_id} not found')
 
     photo_dict = await _get_image_data(aed.tags, photo_state)
 
@@ -96,11 +96,11 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
                 **photo_dict,
                 **timezone_dict,
                 'type': 'node',
-                'id': int(aed.id),
+                'id': aed.id,
                 'lat': aed.position.lat,
                 'lon': aed.position.lon,
                 'tags': aed.tags,
-                'version': 0,
+                'version': aed.version,
             }
         ],
     }

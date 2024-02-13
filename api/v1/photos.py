@@ -90,7 +90,7 @@ async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
 @router.post('/upload')
 async def upload(
     request: Request,
-    node_id: Annotated[str, Form()],
+    node_id: Annotated[int, Form()],
     file_license: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     oauth2_credentials: Annotated[str, Form()],
@@ -119,7 +119,7 @@ async def upload(
 
     aed = await aed_state.get_aed_by_id(node_id)
     if aed is None:
-        raise HTTPException(404, f'Node {node_id!r} not found, perhaps it is not an AED?')
+        raise HTTPException(404, f'Node {node_id} not found, perhaps it is not an AED?')
 
     osm = OpenStreetMap(oauth2_credentials_)
     osm_user = await osm.get_authorized_user()
@@ -129,7 +129,7 @@ async def upload(
     if osm_user_has_active_block(osm_user):
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
-    photo_info = await photo_state.set_photo(node_id, str(osm_user['id']), file)
+    photo_info = await photo_state.set_photo(node_id, osm_user['id'], file)
     photo_url = f'{request.base_url}api/v1/photos/view/{photo_info.id}.webp'
 
     node_xml = await osm.get_node_xml(node_id)

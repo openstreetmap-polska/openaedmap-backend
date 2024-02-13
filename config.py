@@ -10,7 +10,6 @@ from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
 VERSION = '2.6.1'
-VERSION_TIMESTAMP = 0
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
