@@ -96,11 +96,11 @@ async def get_node(node_id: str, aed_state: AEDStateDep, photo_state: PhotoState
                 **photo_dict,
                 **timezone_dict,
                 'type': 'node',
-                'id': int(aed.id),
+                'id': aed.id,
                 'lat': aed.position.lat,
                 'lon': aed.position.lon,
                 'tags': aed.tags,
-                'version': 0,
+                'version': aed.version,
             }
         ],
     }

@@ -128,7 +128,7 @@ async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
                     {
                         'geometry': aed.position.shapely,
                         'properties': {
-                            'node_id': int(aed.id),
+                            'node_id': aed.id,
                             'access': aed.access,
                         },
                     }

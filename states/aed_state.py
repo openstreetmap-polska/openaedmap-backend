@@ -23,18 +23,15 @@ from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
 from utils import as_dict, print_run_time, retry_exponential
 
-_AED_QUERY = 'node[emergency=defibrillator];out body qt;'
+_AED_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
 
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('aed')
-    if doc is None:
+    if doc is None or doc.get('version', 1) < 2:
         return True, 0
 
-    update_timestamp = doc['update_timestamp']
-    # if update_timestamp < VERSION_TIMESTAMP:
-    #     return True, update_timestamp
-
+    update_timestamp: float = doc['update_timestamp']
     update_age = time() - update_timestamp
     if update_age > AED_UPDATE_DELAY.total_seconds():
         return True, update_timestamp
@@ -92,7 +89,13 @@ def _process_overpass_node(node: dict) -> AED:
     tags = node.get('tags', {})
     is_valid = _is_defibrillator(tags)
     assert is_valid, 'Unexpected non-defibrillator node'
-    return AED(id=str(node['id']), position=LonLat(node['lon'], node['lat']), country_codes=None, tags=tags)
+    return AED(
+        id=node['id'],
+        position=LonLat(node['lon'], node['lat']),
+        country_codes=None,
+        tags=tags,
+        version=node['version'],
+    )
 
 
 async def _update_db_snapshot() -> None:
@@ -104,7 +107,7 @@ async def _update_db_snapshot() -> None:
     async with Transaction() as s:
         await AED_COLLECTION.delete_many({}, session=s)
         await AED_COLLECTION.insert_many(insert_many_arg, session=s)
-        await set_state_doc('aed', {'update_timestamp': data_timestamp}, session=s)
+        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
 
     if aeds:
         print('🩺 Updating country codes')
@@ -122,13 +125,14 @@ def _process_action(action: dict) -> Iterable[AED | str]:
     def _process_create_or_modify(node: dict) -> AED | str:
         node_tags = _parse_xml_tags(node)
         node_valid = _is_defibrillator(node_tags)
-        node_id = str(node['@id'])
+        node_id = int(node['@id'])
         if node_valid:
             return AED(
                 id=node_id,
                 position=LonLat(float(node['@lon']), float(node['@lat'])),
                 country_codes=None,
                 tags=node_tags,
+                version=int(node['@version']),
             )
         else:
             return node_id
@@ -169,7 +173,7 @@ async def _update_db_diffs(last_update: float) -> None:
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
         await AED_COLLECTION.bulk_write(bulk_write_arg, ordered=True, session=s)
-        await set_state_doc('aed', {'update_timestamp': data_timestamp}, session=s)
+        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
 
     if aeds:
         print('🩺 Updating country codes')

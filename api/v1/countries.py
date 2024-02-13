@@ -83,7 +83,12 @@ async def get_geojson(
             {
                 'type': 'Feature',
                 'geometry': mapping(aed.position.shapely),
-                'properties': {'@osm_type': 'node', '@osm_id': int(aed.id), **aed.tags},
+                'properties': {
+                    '@osm_type': 'node',
+                    '@osm_id': aed.id,
+                    '@osm_version': aed.version,
+                    **aed.tags,
+                },
             }
             for aed in aeds
         ],
