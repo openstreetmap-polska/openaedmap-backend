@@ -17,7 +17,7 @@ from osm_change import update_node_tags_osm_change
 from states.aed_state import AEDStateDep
 from states.photo_report_state import PhotoReportStateDep
 from states.photo_state import PhotoStateDep
-from utils import get_http_client
+from utils import get_http_client, get_wikimedia_commons_url
 
 router = APIRouter(prefix='/photos')
 
@@ -65,19 +65,13 @@ async def view(id: str, photo_state: PhotoStateDep) -> FileResponse:
 async def proxy_direct(url_encoded: str) -> FileResponse:
     url = unquote_plus(url_encoded)
     file, content_type = await _fetch_image(url)
-    return Response(
-        file,
-        media_type=content_type,
-        headers={
-            'X-Image-Source': url,
-        },
-    )
+    return Response(file, media_type=content_type)
 
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
-    meta_url = f'https://commons.wikimedia.org/wiki/{unquote_plus(path_encoded)}'
+    meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
 
     async with get_http_client() as http:
         r = await http.get(meta_url)
@@ -90,13 +84,7 @@ async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
 
     image_url = og_image['content']
     file, content_type = await _fetch_image(image_url)
-    return Response(
-        file,
-        media_type=content_type,
-        headers={
-            'X-Image-Source': meta_url,
-        },
-    )
+    return Response(file, media_type=content_type)
 
 
 @router.post('/upload')

@@ -10,6 +10,7 @@ from middlewares.cache_middleware import configure_cache
 from models.lonlat import LonLat
 from states.aed_state import AEDStateDep
 from states.photo_state import PhotoStateDep
+from utils import get_wikimedia_commons_url
 
 router = APIRouter()
 
@@ -43,12 +44,14 @@ async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> d
         return {
             '@photo_id': photo_info.id,
             '@photo_url': f'/api/v1/photos/view/{photo_info.id}.webp',
+            '@photo_source': None,
         }
 
     if image_url:
         return {
             '@photo_id': None,
             '@photo_url': f'/api/v1/photos/proxy/direct/{quote_plus(image_url)}',
+            '@photo_source': image_url,
         }
 
     wikimedia_commons: str = tags.get('wikimedia_commons', '')
@@ -57,11 +60,13 @@ async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> d
         return {
             '@photo_id': None,
             '@photo_url': f'/api/v1/photos/proxy/wikimedia-commons/{quote_plus(wikimedia_commons)}',
+            '@photo_source': get_wikimedia_commons_url(wikimedia_commons),
         }
 
     return {
         '@photo_id': None,
         '@photo_url': None,
+        '@photo_source': None,
     }
 
 
