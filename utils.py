@@ -83,3 +83,7 @@ def as_dict(data) -> dict:
             d[k] = mapping(v)
 
     return d
+
+
+def get_wikimedia_commons_url(path: str) -> str:
+    return f'https://commons.wikimedia.org/wiki/{path}'
