@@ -9,9 +9,11 @@ from pymongo import IndexModel
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.6.1'
+VERSION = '2.6.2'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
+
+ENVIRONMENT = os.getenv('ENVIRONMENT', None)
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
 
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
