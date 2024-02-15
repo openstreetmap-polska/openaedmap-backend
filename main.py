@@ -22,6 +22,7 @@ if ENVIRONMENT:
         dsn='https://40b1753c3f72721489ca0bca38bb4566@sentry.monicz.dev/3',
         release=VERSION,
         environment=ENVIRONMENT,
+        trace_propagation_targets=None,
     )
 
 
