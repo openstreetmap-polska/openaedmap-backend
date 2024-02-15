@@ -22,6 +22,7 @@ if ENVIRONMENT:
         dsn='https://40b1753c3f72721489ca0bca38bb4566@sentry.monicz.dev/3',
         release=VERSION,
         environment=ENVIRONMENT,
+        trace_propagation_targets=None,
     )
 
 
@@ -58,6 +59,7 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
+    allow_headers=['baggage', 'sentry-trace'],
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds()),
 )
