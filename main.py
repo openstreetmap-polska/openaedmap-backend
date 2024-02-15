@@ -59,6 +59,7 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
+    allow_headers=['baggage', 'sentry-trace'],
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds()),
 )
