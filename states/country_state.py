@@ -130,7 +130,7 @@ class CountryState:
             started = False
 
         while True:
-            with start_transaction(op='update_db', name=CountryState.update_db_task.__qualname__, sampled=True):
+            with start_transaction(op='db.update', name=CountryState.update_db_task.__qualname__, sampled=True):
                 await _update_db()
             if not started:
                 task_status.started()

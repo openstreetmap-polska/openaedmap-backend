@@ -205,7 +205,7 @@ class AEDState:
             started = False
 
         while True:
-            with start_transaction(op='update_db', name=AEDState.update_db_task.__qualname__):
+            with start_transaction(op='db.update', name=AEDState.update_db_task.__qualname__):
                 await _update_db()
             if not started:
                 task_status.started()
