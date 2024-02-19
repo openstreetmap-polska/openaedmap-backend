@@ -9,7 +9,7 @@ from shapely.geometry.base import BaseGeometry
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
 from models.bbox import BBox
-from models.country import Country, CountryLabel
+from models.country import Country
 from osm_countries import get_osm_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
@@ -61,7 +61,7 @@ def _get_names(tags: dict[str, str]) -> dict[str, str]:
 @trace
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('country')
-    if doc is None:
+    if doc is None or doc.get('version', 1) < 2:
         return True, 0
 
     update_timestamp: float = doc['update_timestamp']
@@ -100,7 +100,7 @@ async def _update_db() -> None:
             names=_get_names(c.tags),
             code=country_code_assigner.get_unique(c.tags),
             geometry=c.geometry,
-            label=CountryLabel(position=c.representative_point),
+            label_position=c.representative_point,
         )
         insert_many_arg.append(country.model_dump())
 
@@ -108,7 +108,7 @@ async def _update_db() -> None:
     async with Transaction() as s:
         await COUNTRY_COLLECTION.delete_many({}, session=s)
         await COUNTRY_COLLECTION.insert_many(insert_many_arg, session=s)
-        await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
+        await set_state_doc('country', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
 
     shape_cache.clear()
 
@@ -147,14 +147,13 @@ class CountryState:
             cached = shape_cache.get(doc['code'])
             if cached is None:
                 geometry = geometry_validator(doc['geometry'])
-                label_position = geometry_validator(doc['label']['position'])
+                label_position = geometry_validator(doc['label_position'])
                 shape_cache[doc['code']] = (geometry, label_position)
             else:
                 geometry, label_position = cached
 
             doc['geometry'] = geometry
-            doc['label']['position'] = label_position
-            doc['label'] = CountryLabel.model_construct(**doc['label'])
+            doc['label_position'] = label_position
             result.append(Country.model_construct(**doc))
 
         return result

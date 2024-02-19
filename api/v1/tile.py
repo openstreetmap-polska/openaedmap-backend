@@ -132,7 +132,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
                 'name': 'defibrillators',
                 'features': [
                     {
-                        'geometry': country.label.position,
+                        'geometry': country.label_position,
                         'properties': {
                             'country_name': country.name,
                             'country_code': country.code,

@@ -30,7 +30,7 @@ _AED_QUERY = 'node[emergency=defibrillator];out meta qt;'
 @trace
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('aed')
-    if doc is None or doc.get('version', 1) < 2:
+    if doc is None or doc.get('version', 1) < 3:
         return True, 0
 
     update_timestamp: float = doc['update_timestamp']
@@ -170,7 +170,7 @@ async def _update_db_diffs(last_update: float) -> None:
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
         await AED_COLLECTION.bulk_write(bulk_write_arg, ordered=True, session=s)
-        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
+        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 3}, session=s)
 
     if aeds:
         print('🩺 Updating country codes')
