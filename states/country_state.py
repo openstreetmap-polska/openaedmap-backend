@@ -6,6 +6,7 @@ import anyio
 from dacite import from_dict
 from sentry_sdk import start_transaction, trace
 from shapely.geometry import Point, mapping, shape
+from shapely.geometry.base import BaseGeometry
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
 from models.bbox import BBox
@@ -34,6 +35,9 @@ class CountryCodeAssigner:
                     return code
 
         return 'XX'
+
+
+shape_cache: dict[str, BaseGeometry] = {}
 
 
 def _get_names(tags: dict[str, str]) -> dict[str, str]:
@@ -107,6 +111,8 @@ async def _update_db() -> None:
         await COUNTRY_COLLECTION.insert_many(insert_many_arg, session=s)
         await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
 
+    shape_cache.clear()
+
     print('🗺️ Updating country codes')
     from states.aed_state import AEDState
 
@@ -139,7 +145,12 @@ class CountryState:
         result = []
 
         async for c in cursor:
-            result.append(from_dict(Country, {**c, 'geometry': shape(c['geometry'])}))  # noqa: PERF401
+            geometry = shape_cache.get(c['code'])
+            if geometry is None:
+                geometry = shape(c['geometry'])
+                shape_cache[c['code']] = geometry
+
+            result.append(from_dict(Country, {**c, 'geometry': geometry}))
 
         return tuple(result)
 
