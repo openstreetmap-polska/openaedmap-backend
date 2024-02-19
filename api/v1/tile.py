@@ -91,7 +91,13 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
             )
 
     with start_span(description='Encoding MVT'):
-        return mvt.encode(data, default_options={'extents': MVT_EXTENT})
+        return mvt.encode(
+            data,
+            default_options={
+                'extents': MVT_EXTENT,
+                'check_winding_order': False,
+            },
+        )
 
 
 @trace
