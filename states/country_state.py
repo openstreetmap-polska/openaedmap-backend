@@ -1,23 +1,23 @@
 from collections.abc import Sequence
 from time import time
-from typing import Annotated, NoReturn
+from typing import NoReturn
 
 import anyio
-from dacite import from_dict
-from fastapi import Depends
-from shapely.geometry import Point, mapping, shape
+from sentry_sdk import start_transaction, trace
+from shapely.geometry import Point, mapping
+from shapely.geometry.base import BaseGeometry
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
 from models.bbox import BBox
-from models.country import Country, CountryLabel
-from models.lonlat import LonLat
+from models.country import Country
 from osm_countries import get_osm_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, retry_exponential
+from utils import retry_exponential
+from validators.geometry import geometry_validator
 
 
-class CountryCode:
+class CountryCodeAssigner:
     def __init__(self):
         self.used = set()
 
@@ -34,6 +34,9 @@ class CountryCode:
                     return code
 
         return 'XX'
+
+
+shape_cache: dict[str, tuple[BaseGeometry, Point]] = {}
 
 
 def _get_names(tags: dict[str, str]) -> dict[str, str]:
@@ -55,9 +58,10 @@ def _get_names(tags: dict[str, str]) -> dict[str, str]:
     return names
 
 
+@trace
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('country')
-    if doc is None:
+    if doc is None or doc.get('version', 1) < 2:
         return True, 0
 
     update_timestamp: float = doc['update_timestamp']
@@ -69,6 +73,7 @@ async def _should_update_db() -> tuple[bool, float]:
 
 
 @retry_exponential(None, start=4)
+@trace
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:
@@ -87,35 +92,37 @@ async def _update_db() -> None:
         print(f'🗺️ Not enough countries found: {len(osm_countries)})')
         return
 
-    country_code = CountryCode()
-    countries: list[Country] = []
+    country_code_assigner = CountryCodeAssigner()
+    insert_many_arg = []
 
     for c in osm_countries:
-        names = _get_names(c.tags)
-        code = country_code.get_unique(c.tags)
-        label_position = LonLat(c.representative_point.x, c.representative_point.y)
-        label = CountryLabel(label_position)
-        countries.append(Country(names, code, c.geometry, label))
-
-    insert_many_arg = tuple(as_dict(c) for c in countries)
+        country = Country(
+            names=_get_names(c.tags),
+            code=country_code_assigner.get_unique(c.tags),
+            geometry=c.geometry,
+            label_position=c.representative_point,
+        )
+        insert_many_arg.append(country.model_dump())
 
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
         await COUNTRY_COLLECTION.delete_many({}, session=s)
         await COUNTRY_COLLECTION.insert_many(insert_many_arg, session=s)
-        await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
+        await set_state_doc('country', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
+
+    shape_cache.clear()
 
     print('🗺️ Updating country codes')
-    from states.aed_state import get_aed_state
+    from states.aed_state import AEDState
 
-    aed_state = get_aed_state()
-    await aed_state.update_country_codes()
+    await AEDState.update_country_codes()
 
     print('🗺️ Update complete')
 
 
 class CountryState:
-    async def update_db_task(self, *, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
+    @staticmethod
+    async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
         if (await _should_update_db())[1] > 0:
             task_status.started()
             started = True
@@ -123,42 +130,46 @@ class CountryState:
             started = False
 
         while True:
-            await _update_db()
+            with start_transaction(op='update_db', name=CountryState.update_db_task.__qualname__, sampled=True):
+                await _update_db()
             if not started:
                 task_status.started()
                 started = True
             await anyio.sleep(COUNTRY_UPDATE_DELAY.total_seconds())
 
-    async def get_all_countries(self, filter: dict | None = None) -> Sequence[Country]:
+    @staticmethod
+    @trace
+    async def get_all_countries(filter: dict | None = None) -> Sequence[Country]:
         cursor = COUNTRY_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
-        async for c in cursor:
-            result.append(from_dict(Country, {**c, 'geometry': shape(c['geometry'])}))  # noqa: PERF401
+        async for doc in cursor:
+            cached = shape_cache.get(doc['code'])
+            if cached is None:
+                geometry = geometry_validator(doc['geometry'])
+                label_position = geometry_validator(doc['label_position'])
+                shape_cache[doc['code']] = (geometry, label_position)
+            else:
+                geometry, label_position = cached
 
-        return tuple(result)
+            doc['geometry'] = geometry
+            doc['label_position'] = label_position
+            result.append(Country.model_construct(**doc))
 
-    async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
-        return await self.get_all_countries(
+        return result
+
+    @classmethod
+    async def get_countries_within(cls, bbox_or_pos: BBox | Point) -> Sequence[Country]:
+        return await cls.get_all_countries(
             {
                 'geometry': {
                     '$geoIntersects': {
                         '$geometry': mapping(
                             bbox_or_pos.to_polygon(nodes_per_edge=8)
-                            if isinstance(bbox_or_pos, BBox)
-                            else Point(bbox_or_pos.lon, bbox_or_pos.lat)
+                            if isinstance(bbox_or_pos, BBox)  #
+                            else bbox_or_pos
                         )
                     }
                 }
             }
         )
-
-
-_instance = CountryState()
-
-
-def get_country_state() -> CountryState:
-    return _instance
-
-
-CountryStateDep = Annotated[CountryState, Depends(get_country_state)]

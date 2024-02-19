@@ -1,60 +1,63 @@
-from collections.abc import Sequence
-from itertools import chain
 from typing import NamedTuple, Self
 
+import numpy as np
+from shapely import Point
 from shapely.geometry import Polygon
-
-from models.lonlat import LonLat
 
 
 class BBox(NamedTuple):
-    p1: LonLat
-    p2: LonLat
+    p1: Point
+    p2: Point
 
     def extend(self, percentage: float) -> Self:
-        lon_span = self.p2.lon - self.p1.lon
-        lat_span = self.p2.lat - self.p1.lat
+        lon_span = self.p2.x - self.p1.x
+        lat_span = self.p2.y - self.p1.y
         lon_delta = lon_span * percentage
         lat_delta = lat_span * percentage
 
-        new_p1_lon = max(-180, min(180, self.p1.lon - lon_delta))
-        new_p1_lat = max(-90, min(90, self.p1.lat - lat_delta))
-        new_p2_lon = max(-180, min(180, self.p2.lon + lon_delta))
-        new_p2_lat = max(-90, min(90, self.p2.lat + lat_delta))
+        new_p1_lon = max(-180, min(180, self.p1.x - lon_delta))
+        new_p1_lat = max(-90, min(90, self.p1.y - lat_delta))
+        new_p2_lon = max(-180, min(180, self.p2.x + lon_delta))
+        new_p2_lat = max(-90, min(90, self.p2.y + lat_delta))
 
-        return BBox(LonLat(new_p1_lon, new_p1_lat), LonLat(new_p2_lon, new_p2_lat))
+        return BBox(
+            p1=Point(new_p1_lon, new_p1_lat),
+            p2=Point(new_p2_lon, new_p2_lat),
+        )
 
     @classmethod
     def from_tuple(cls, bbox: tuple[float, float, float, float]) -> Self:
-        return cls(LonLat(bbox[0], bbox[1]), LonLat(bbox[2], bbox[3]))
+        return cls(Point(bbox[0], bbox[1]), Point(bbox[2], bbox[3]))
 
     def to_tuple(self) -> tuple[float, float, float, float]:
-        return (self.p1.lon, self.p1.lat, self.p2.lon, self.p2.lat)
+        return (self.p1.x, self.p1.y, self.p2.x, self.p2.y)
 
     def to_polygon(self, *, nodes_per_edge: int = 2) -> Polygon:
         if nodes_per_edge <= 2:
             return Polygon(
                 [
-                    (self.p1.lon, self.p1.lat),
-                    (self.p2.lon, self.p1.lat),
-                    (self.p2.lon, self.p2.lat),
-                    (self.p1.lon, self.p2.lat),
-                    (self.p1.lon, self.p1.lat),
+                    (self.p1.x, self.p1.y),
+                    (self.p2.x, self.p1.y),
+                    (self.p2.x, self.p2.y),
+                    (self.p1.x, self.p2.y),
+                    (self.p1.x, self.p1.y),
                 ]
             )
 
-        x_interval = (self.p2.lon - self.p1.lon) / (nodes_per_edge - 1)
-        y_interval = (self.p2.lat - self.p1.lat) / (nodes_per_edge - 1)
+        x_vals = np.linspace(self.p1.x, self.p2.x, nodes_per_edge)
+        y_vals = np.linspace(self.p1.y, self.p2.y, nodes_per_edge)
 
-        bottom_edge = tuple((self.p1.lon + i * x_interval, self.p1.lat) for i in range(nodes_per_edge))
-        top_edge = tuple((self.p1.lon + i * x_interval, self.p2.lat) for i in range(nodes_per_edge))
-        left_edge = tuple((self.p1.lon, self.p1.lat + i * y_interval) for i in range(1, nodes_per_edge - 1))
-        right_edge = tuple((self.p2.lon, self.p1.lat + i * y_interval) for i in range(1, nodes_per_edge - 1))
+        bottom_edge = np.column_stack((x_vals, np.full(nodes_per_edge, self.p1.y)))
+        top_edge = np.column_stack((x_vals, np.full(nodes_per_edge, self.p2.y)))
+        left_edge = np.column_stack((np.full(nodes_per_edge - 2, self.p1.x), y_vals[1:-1]))
+        right_edge = np.column_stack((np.full(nodes_per_edge - 2, self.p2.x), y_vals[1:-1]))
 
-        return Polygon(chain(bottom_edge, right_edge, reversed(top_edge), reversed(left_edge)))
+        all_coords = np.concatenate((bottom_edge, right_edge, top_edge[::-1], left_edge[::-1]))
 
-    def correct_for_dateline(self) -> Sequence[Self]:
-        if self.p1.lon > self.p2.lon:
-            return (BBox(self.p1, LonLat(180, self.p2.lat)), BBox(LonLat(-180, self.p1.lat), self.p2))
+        return Polygon(all_coords)
+
+    def correct_for_dateline(self) -> tuple[Self, ...]:
+        if self.p1.x > self.p2.x:
+            return (BBox(self.p1, Point(180, self.p2.y)), BBox(Point(-180, self.p1.y), self.p2))
         else:
             return (self,)

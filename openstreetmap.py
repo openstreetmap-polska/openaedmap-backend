@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import xmltodict
 from authlib.integrations.httpx_client import OAuth2Auth
+from sentry_sdk import trace
 
 from config import CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
 from utils import get_http_client, retry_exponential
@@ -17,6 +18,7 @@ class OpenStreetMap:
         self._http = get_http_client(OPENSTREETMAP_API_URL, auth=OAuth2Auth(oauth2_credentials))
 
     @retry_exponential(timedelta(seconds=10))
+    @trace
     async def get_authorized_user(self) -> dict | None:
         r = await self._http.get('/user/details.json')
 
@@ -28,6 +30,7 @@ class OpenStreetMap:
         return r.json()['user']
 
     @retry_exponential(timedelta(seconds=10))
+    @trace
     async def get_node_xml(self, node_id: int) -> dict | None:
         r = await self._http.get(f'/node/{node_id}')
 
@@ -42,6 +45,7 @@ class OpenStreetMap:
             force_list=('tag',),
         )['osm']['node']
 
+    @trace
     async def upload_osm_change(self, osm_change: str) -> str:
         changeset = xmltodict.unparse(
             {

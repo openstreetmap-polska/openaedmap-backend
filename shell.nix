@@ -3,7 +3,7 @@
 let
   # Currently using nixpkgs-23.11-darwin
   # Update with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/6716c0e608eed726549fd92704b9a7a7077bdf00.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/e0da498ad77ac8909a980f07eff060862417ccf7.tar.gz") { };
 
   libraries' = with pkgs; [
     # Base libraries
@@ -13,9 +13,22 @@ let
     zlib.out
   ];
 
+  # Wrap Python to override LD_LIBRARY_PATH
+  wrappedPython = with pkgs; (symlinkJoin {
+    name = "python";
+    paths = [
+      # Enable Python optimizations when in production
+      (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
+    ];
+    buildInputs = [ makeWrapper ];
+    postBuild = ''
+      wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath libraries'}"
+    '';
+  });
+
   packages' = with pkgs; [
     # Base packages
-    python312
+    wrappedPython
 
     # Scripts
     # -- Misc
@@ -26,17 +39,8 @@ let
     # Development packages
     poetry
     ruff
-    gcc
 
     # Scripts
-    # -- Cython
-    (writeShellScriptBin "cython-build" ''
-      python setup.py build_ext --build-lib cython_lib
-    '')
-    (writeShellScriptBin "cython-clean" ''
-      rm -rf build "cython_lib/"*{.c,.html,.so}
-    '')
-
     # -- Docker (dev)
     (writeShellScriptBin "dev-start" ''
       if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
@@ -64,7 +68,6 @@ let
     '')
     (writeShellScriptBin "docker-build" ''
       set -e
-      cython-clean && cython-build
       if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker load < "$(sudo nix-build --no-out-link)"
     '')
@@ -75,14 +78,16 @@ let
 
     echo "Installing Python dependencies"
     export POETRY_VIRTUALENVS_IN_PROJECT=1
+    poetry env use "${wrappedPython}/bin/python"
     poetry install --no-root --compile
 
     echo "Activating Python virtual environment"
     source .venv/bin/activate
 
-    export LD_LIBRARY_PATH="${lib.makeLibraryPath libraries'}"
-
     # Development environment variables
+    export PYTHONNOUSERSITE=1
+    export TZ="UTC"
+
     if [ -f .env ]; then
       echo "Loading .env file"
       set -o allexport
@@ -94,7 +99,6 @@ let
   '';
 in
 pkgs.mkShell {
-  libraries = libraries';
   buildInputs = libraries' ++ packages';
   shellHook = shell';
 }

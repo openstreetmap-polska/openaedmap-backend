@@ -3,8 +3,8 @@ import xmltodict
 from config import CHANGESET_ID_PLACEHOLDER, CREATED_BY
 
 
-def _initialize_osm_change_structure() -> dict:
-    return {
+def update_node_tags_osm_change(node_xml: dict, update_tags: dict[str, str]) -> str:
+    result = {
         'osmChange': {
             '@version': 0.6,
             '@generator': CREATED_BY,
@@ -13,10 +13,6 @@ def _initialize_osm_change_structure() -> dict:
             },
         }
     }
-
-
-def update_node_tags_osm_change(node_xml: dict, update_tags: dict[str, str]) -> str:
-    result = _initialize_osm_change_structure()
 
     node_xml.pop('@timestamp', None)
     node_xml.pop('@user', None)

@@ -3,12 +3,11 @@ import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from itertools import chain
-from operator import itemgetter
 
-import anyio
 import xmltodict
-from anyio.streams.memory import MemoryObjectSendStream
+from anyio import create_task_group, fail_after
 from httpx import AsyncClient
+from sentry_sdk import start_span, trace
 
 from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, REPLICATION_URL
 from utils import get_http_client, retry_exponential
@@ -31,6 +30,7 @@ def _format_actions(xml: str) -> str:
 
 
 @retry_exponential(AED_REBUILD_THRESHOLD)
+@trace
 async def _get_state(http: AsyncClient, sequence_number: int | None) -> tuple[int, float]:
     if sequence_number is None:
         r = await http.get('state.txt')
@@ -50,33 +50,9 @@ async def _get_state(http: AsyncClient, sequence_number: int | None) -> tuple[in
     return sequence_number, sequence_timestamp
 
 
-@retry_exponential(AED_REBUILD_THRESHOLD)
-async def _get_planet_diff(http: AsyncClient, sequence_number: int, send_stream: MemoryObjectSendStream) -> None:
-    r = await http.get(f'{_format_sequence_number(sequence_number)}.osc.gz')
-    r.raise_for_status()
-
-    xml_gz = r.content
-    xml = gzip.decompress(xml_gz).decode()
-    xml = _format_actions(xml)
-    actions: list[dict] = xmltodict.parse(
-        xml,
-        postprocessor=xmltodict_postprocessor,
-        force_list=('action', 'node', 'way', 'relation', 'member', 'tag', 'nd'),
-    )['osmChange']['action']
-
-    node_actions = []
-
-    for action in actions:
-        if 'node' in action:
-            action.pop('way', None)
-            action.pop('relation', None)
-            node_actions.append(action)
-
-    await send_stream.send((sequence_number, tuple(node_actions)))
-
-
+@trace
 async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
-    with anyio.fail_after(PLANET_DIFF_TIMEOUT.total_seconds()):
+    with fail_after(PLANET_DIFF_TIMEOUT.total_seconds()):
         async with get_http_client(REPLICATION_URL) as http:
             sequence_numbers = []
             sequence_timestamps = []
@@ -94,19 +70,41 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
             if not sequence_numbers:
                 return (), last_update
 
-            send_stream, receive_stream = anyio.create_memory_object_stream()
-            result: list[tuple[int, dict]] = []
+            result: list[tuple[int, list[dict]]] = []
 
-            async with anyio.create_task_group() as tg, send_stream, receive_stream:
-                for sequence_number in sequence_numbers:
-                    tg.start_soon(_get_planet_diff, http, sequence_number, send_stream)
+            with start_span(description=f'Processing {len(sequence_numbers)} planet diffs'):
 
-                for _ in range(len(sequence_numbers)):
-                    sequence_number, data = await receive_stream.receive()
-                    result.append((sequence_number, data))
+                @retry_exponential(AED_REBUILD_THRESHOLD)
+                async def _get_planet_diff(sequence_number: int) -> None:
+                    r = await http.get(f'{_format_sequence_number(sequence_number)}.osc.gz')
+                    r.raise_for_status()
 
-            result.sort(key=itemgetter(0))
+                    xml = gzip.decompress(r.content).decode()
+                    xml = _format_actions(xml)
+                    actions: list[dict] = xmltodict.parse(
+                        xml,
+                        postprocessor=xmltodict_postprocessor,
+                        force_list=('action', 'node', 'way', 'relation', 'member', 'tag', 'nd'),
+                    )['osmChange']['action']
+
+                    node_actions: list[dict] = []
+
+                    for action in actions:
+                        # ignore everything that is not a node
+                        if 'node' in action:
+                            action.pop('way', None)
+                            action.pop('relation', None)
+                            node_actions.append(action)
+
+                    result.append((sequence_number, node_actions))
+
+                async with create_task_group() as tg:
+                    for sequence_number in sequence_numbers:
+                        tg.start_soon(_get_planet_diff, sequence_number)
+
+            # sort by sequence number in ascending order
+            result.sort(key=lambda x: x[0])
+
             data = tuple(chain.from_iterable(data for _, data in result))
             data_timestamp = sequence_timestamps[0]
-
             return data, data_timestamp

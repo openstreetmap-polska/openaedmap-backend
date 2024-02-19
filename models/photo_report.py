@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True, slots=True)
-class PhotoReport:
+class PhotoReport(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
     id: str
     photo_id: str
     timestamp: float

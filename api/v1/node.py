@@ -4,12 +4,12 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
 from pytz import timezone
+from shapely import Point
 from tzfpy import get_tz
 
 from middlewares.cache_middleware import configure_cache
-from models.lonlat import LonLat
-from states.aed_state import AEDStateDep
-from states.photo_state import PhotoStateDep
+from states.aed_state import AEDState
+from states.photo_state import PhotoState
 from utils import get_wikimedia_commons_url
 
 router = APIRouter()
@@ -17,8 +17,8 @@ router = APIRouter()
 photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
 
 
-def _get_timezone(lonlat: LonLat) -> tuple[str | None, str | None]:
-    timezone_name: str | None = get_tz(lonlat.lon, lonlat.lat)
+def _get_timezone(position: Point) -> tuple[str | None, str | None]:
+    timezone_name: str | None = get_tz(position.x, position.y)
     timezone_offset = None
 
     if timezone_name:
@@ -32,14 +32,14 @@ def _get_timezone(lonlat: LonLat) -> tuple[str | None, str | None]:
     return timezone_name, timezone_offset
 
 
-async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> dict:
+async def _get_image_data(tags: dict[str, str]) -> dict:
     image_url: str = tags.get('image', '')
 
     if (
         image_url
         and (photo_id_match := photo_id_re.search(image_url))
         and (photo_id := photo_id_match.group('id'))
-        and (photo_info := await photo_state.get_photo_by_id(photo_id))
+        and (photo_info := await PhotoState.get_photo_by_id(photo_id))
     ):
         return {
             '@photo_id': photo_info.id,
@@ -72,13 +72,13 @@ async def _get_image_data(tags: dict[str, str], photo_state: PhotoStateDep) -> d
 
 @router.get('/node/{node_id}')
 @configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
-async def get_node(node_id: int, aed_state: AEDStateDep, photo_state: PhotoStateDep):
-    aed = await aed_state.get_aed_by_id(node_id)
+async def get_node(node_id: int):
+    aed = await AEDState.get_aed_by_id(node_id)
 
     if aed is None:
         raise HTTPException(404, f'Node {node_id} not found')
 
-    photo_dict = await _get_image_data(aed.tags, photo_state)
+    photo_dict = await _get_image_data(aed.tags)
 
     timezone_name, timezone_offset = _get_timezone(aed.position)
     timezone_dict = {
@@ -97,8 +97,8 @@ async def get_node(node_id: int, aed_state: AEDStateDep, photo_state: PhotoState
                 **timezone_dict,
                 'type': 'node',
                 'id': aed.id,
-                'lat': aed.position.lat,
-                'lon': aed.position.lon,
+                'lat': aed.position.y,
+                'lon': aed.position.x,
                 'tags': aed.tags,
                 'version': aed.version,
             }

@@ -1,12 +1,11 @@
 from collections.abc import Iterable
-from dataclasses import dataclass
+from typing import NamedTuple
 
-from models.lonlat import LonLat
+from shapely import Point
 
 
-@dataclass(frozen=True, slots=True)
-class AEDGroup:
-    position: LonLat
+class AEDGroup(NamedTuple):
+    position: Point
     count: int
     access: str
 

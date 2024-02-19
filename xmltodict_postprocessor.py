@@ -1,8 +1,11 @@
-def xmltodict_postprocessor(path, key, value):
-    if key in {'@id', '@ref', '@changeset', '@uid'}:
+def xmltodict_postprocessor(_, key, value):
+    if key in ('@id', '@ref', '@changeset', '@uid'):
         return key, int(value)
 
-    if key in {'@version'}:
+    if key in ('@lon, @lat'):
+        return key, float(value)
+
+    if key == '@version':
         try:
             return key, int(value)
         except ValueError:
