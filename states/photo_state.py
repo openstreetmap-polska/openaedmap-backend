@@ -83,7 +83,7 @@ class PhotoState:
         if doc is None:
             return None
 
-        info = PhotoInfo.model_construct(doc)
+        info = PhotoInfo.model_construct(**doc)
 
         if check_file and not await info.path.is_file():
             return None

@@ -75,8 +75,8 @@ def _mvt_rescale(x: float, y: float, x_min: float, y_min: float, x_span: float, 
 
 
 def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
-    x_min, y_min = MVT_TRANSFORMER.transform(*bbox.p1)
-    x_max, y_max = MVT_TRANSFORMER.transform(*bbox.p2)
+    x_min, y_min = MVT_TRANSFORMER.transform(bbox.p1.x, bbox.p1.y)
+    x_max, y_max = MVT_TRANSFORMER.transform(bbox.p2.x, bbox.p2.y)
     x_span = x_max - x_min
     y_span = y_max - y_min
 

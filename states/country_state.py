@@ -36,7 +36,7 @@ class CountryCodeAssigner:
         return 'XX'
 
 
-shape_cache: dict[str, BaseGeometry] = {}
+shape_cache: dict[str, tuple[BaseGeometry, Point]] = {}
 
 
 def _get_names(tags: dict[str, str]) -> dict[str, str]:
@@ -144,13 +144,18 @@ class CountryState:
         result = []
 
         async for doc in cursor:
-            geometry = shape_cache.get(doc['code'])
-            if geometry is None:
+            cached = shape_cache.get(doc['code'])
+            if cached is None:
                 geometry = geometry_validator(doc['geometry'])
-                shape_cache[doc['code']] = geometry
+                label_position = geometry_validator(doc['label']['position'])
+                shape_cache[doc['code']] = (geometry, label_position)
+            else:
+                geometry, label_position = cached
 
             doc['geometry'] = geometry
-            result.append(Country.model_construct(doc))
+            doc['label']['position'] = label_position
+            doc['label'] = CountryLabel.model_construct(**doc['label'])
+            result.append(Country.model_construct(**doc))
 
         return result
 

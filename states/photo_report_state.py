@@ -42,6 +42,6 @@ class PhotoReportState:
         result = []
 
         async for doc in cursor:
-            result.append(PhotoReport.model_construct(doc))  # noqa: PERF401
+            result.append(PhotoReport.model_construct(**doc))  # noqa: PERF401
 
         return tuple(result)

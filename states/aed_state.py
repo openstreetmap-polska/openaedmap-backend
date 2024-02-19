@@ -230,7 +230,7 @@ class AEDState:
             return None
 
         doc['position'] = geometry_validator(doc['position'])
-        aed = AED.model_construct(doc)
+        aed = AED.model_construct(**doc)
         return aed
 
     @staticmethod
@@ -241,7 +241,7 @@ class AEDState:
 
         async for doc in cursor:
             doc['position'] = geometry_validator(doc['position'])
-            aed = AED.model_construct(doc)
+            aed = AED.model_construct(**doc)
             result.append(aed)
 
         return result
