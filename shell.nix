@@ -39,7 +39,6 @@ let
     # Development packages
     poetry
     ruff
-    gcc
 
     # Scripts
     # -- Docker (dev)
