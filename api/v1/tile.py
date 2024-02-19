@@ -66,11 +66,11 @@ async def get_tile(
 
 
 def _mvt_rescale(x: float, y: float, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple[int, int]:
-    x_mvt, y_mvt = MVT_TRANSFORMER.transform(x, y)
+    x_mvt, y_mvt = MVT_TRANSFORMER.transform(np.array(x), np.array(y))
 
     # subtract minimum boundary and scale to MVT extent
-    x_scaled = int((x_mvt - x_min) / x_span * MVT_EXTENT)
-    y_scaled = int((y_mvt - y_min) / y_span * MVT_EXTENT)
+    x_scaled = np.rint((x_mvt - x_min) / x_span * MVT_EXTENT).astype(int)
+    y_scaled = np.rint((y_mvt - y_min) / y_span * MVT_EXTENT).astype(int)
     return x_scaled, y_scaled
 
 

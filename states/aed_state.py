@@ -105,7 +105,7 @@ async def _update_db_snapshot() -> None:
     async with Transaction() as s:
         await AED_COLLECTION.delete_many({}, session=s)
         await AED_COLLECTION.insert_many(insert_many_arg, session=s)
-        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 2}, session=s)
+        await set_state_doc('aed', {'update_timestamp': data_timestamp, 'version': 3}, session=s)
 
     if aeds:
         print('🩺 Updating country codes')
@@ -258,7 +258,7 @@ class AEDState:
             return aeds
 
         model = Birch(threshold=group_eps, n_clusters=None, copy=False)
-        aeds_positions = tuple(tuple(aed.position.x, aed.position.y) for aed in aeds)
+        aeds_positions = tuple((aed.position.x, aed.position.y) for aed in aeds)
 
         with start_span(description=f'Clustering {len(aeds)} samples'):
             clusters = model.fit_predict(aeds_positions)
