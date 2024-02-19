@@ -149,7 +149,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
 
 @trace
 async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
-    group_eps = 9.8 / 2**z if z < TILE_MAX_Z else None
+    group_eps = 9.6 / 2**z if z < TILE_MAX_Z else None
     aeds = await AEDState.get_aeds_within_bbox(bbox.extend(0.5), group_eps)
 
     return _mvt_encode(

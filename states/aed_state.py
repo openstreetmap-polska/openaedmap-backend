@@ -3,6 +3,7 @@ from time import time
 from typing import NoReturn
 
 import anyio
+import numpy as np
 from asyncache import cached
 from cachetools import TTLCache
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
@@ -257,15 +258,26 @@ class AEDState:
         if len(aeds) <= 1 or group_eps is None:
             return aeds
 
-        model = Birch(threshold=group_eps, n_clusters=None, copy=False)
-        aeds_positions = tuple((aed.position.x, aed.position.y) for aed in aeds)
+        positions = tuple((aed.position.x, aed.position.y) for aed in aeds)
 
-        with start_span(description=f'Clustering {len(aeds)} samples'):
-            clusters = model.fit_predict(aeds_positions)
+        # deterministic sampling
+        max_fit_samples = 7000
+        if len(positions) > max_fit_samples:
+            indices = np.linspace(0, len(positions), max_fit_samples, endpoint=False, dtype=int)
+            fit_positions = np.array(positions)[indices]
+        else:
+            fit_positions = positions
+
+        with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
+            model = Birch(threshold=group_eps, n_clusters=None, copy=False)
+            model.fit(fit_positions)
 
         with start_span(description=f'Processing {len(aeds)} samples'):
             cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
             result: list[AED | AEDGroup] = []
+
+            with start_span(description='Clustering'):
+                clusters = model.predict(positions)
 
             for aed, cluster in zip(aeds, clusters, strict=True):
                 cluster_groups[cluster].append(aed)
@@ -273,7 +285,6 @@ class AEDState:
             for group, center in zip(cluster_groups, model.subcluster_centers_, strict=True):
                 if len(group) == 0:
                     continue
-
                 if len(group) == 1:
                     result.append(group[0])
                     continue
