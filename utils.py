@@ -1,8 +1,6 @@
 import functools
 import time
 import traceback
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
@@ -12,22 +10,6 @@ import httpx
 from shapely.geometry import mapping
 
 from config import USER_AGENT
-
-
-@contextmanager
-def print_run_time(message: str | list) -> Generator[None, None, None]:
-    start_time = time.perf_counter()
-    try:
-        yield
-    finally:
-        end_time = time.perf_counter()
-        elapsed_time = end_time - start_time
-
-        # support message by reference
-        if isinstance(message, list):
-            message = message[0]
-
-        print(f'[⏱️] {message} took {elapsed_time:.3f}s')
 
 
 def retry_exponential(timeout: timedelta | None, *, start: float = 1):

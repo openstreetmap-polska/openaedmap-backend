@@ -1,43 +1,35 @@
 from datetime import timedelta
 from typing import Annotated
 
-import anyio
-from anyio.streams.memory import MemoryObjectSendStream
+from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
+from sentry_sdk import start_span
+from sentry_sdk.tracing import Span
 from shapely.geometry import mapping
 
 from middlewares.cache_middleware import configure_cache
 from models.country import Country
-from states.aed_state import AEDState, AEDStateDep
-from states.country_state import CountryStateDep
+from states.aed_state import AEDState
+from states.country_state import CountryState
 
 router = APIRouter(prefix='/countries')
 
 
-async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
-    count = await aed_state.count_aeds_by_country_code(country.code)
-    await send_stream.send((country, count))
-
-
 @router.get('/names')
 @configure_cache(timedelta(hours=1), stale=timedelta(days=7))
-async def get_names(
-    country_state: CountryStateDep,
-    aed_state: AEDStateDep,
-    language: str | None = None,
-):
-    countries = await country_state.get_all_countries()
+async def get_names(language: str | None = None):
+    countries = await CountryState.get_all_countries()
+    country_count_map: dict[str, int] = {}
 
-    send_stream, receive_stream = anyio.create_memory_object_stream()
-    country_count_map = {}
+    with start_span(Span(description='Counting AEDs')):
 
-    async with anyio.create_task_group() as tg, send_stream, receive_stream:
-        for country in countries:
-            tg.start_soon(_count_aed_in_country, country, aed_state, send_stream)
-
-        for _ in range(len(countries)):
-            country, count = await receive_stream.receive()
+        async def count_task(country: Country) -> None:
+            count = await AEDState.count_aeds_by_country_code(country.code)
             country_count_map[country.name] = count
+
+        async with create_task_group() as tg:
+            for country in countries:
+                tg.start_soon(count_task, country)
 
     def limit_country_names(names: dict[str, str]):
         if language and (name := names.get(language)):
@@ -67,13 +59,11 @@ async def get_names(
 async def get_geojson(
     response: Response,
     country_code: Annotated[str, Path(min_length=2, max_length=5)],
-    country_state: CountryStateDep,
-    aed_state: AEDStateDep,
 ):
     if country_code == 'WORLD':
-        aeds = await aed_state.get_all_aeds()
+        aeds = await AEDState.get_all_aeds()
     else:
-        aeds = await aed_state.get_aeds_by_country_code(country_code)
+        aeds = await AEDState.get_aeds_by_country_code(country_code)
 
     response.headers['Content-Disposition'] = 'attachment'
     response.headers['Content-Type'] = 'application/geo+json; charset=utf-8'

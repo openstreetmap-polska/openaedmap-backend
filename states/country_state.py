@@ -1,10 +1,10 @@
 from collections.abc import Sequence
 from time import time
-from typing import Annotated, NoReturn
+from typing import NoReturn
 
 import anyio
 from dacite import from_dict
-from fastapi import Depends
+from sentry_sdk import trace
 from shapely.geometry import Point, mapping, shape
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
@@ -17,7 +17,7 @@ from transaction import Transaction
 from utils import as_dict, retry_exponential
 
 
-class CountryCode:
+class CountryCodeAssigner:
     def __init__(self):
         self.used = set()
 
@@ -87,12 +87,12 @@ async def _update_db() -> None:
         print(f'🗺️ Not enough countries found: {len(osm_countries)})')
         return
 
-    country_code = CountryCode()
+    country_code_assigner = CountryCodeAssigner()
     countries: list[Country] = []
 
     for c in osm_countries:
         names = _get_names(c.tags)
-        code = country_code.get_unique(c.tags)
+        code = country_code_assigner.get_unique(c.tags)
         label_position = LonLat(c.representative_point.x, c.representative_point.y)
         label = CountryLabel(label_position)
         countries.append(Country(names, code, c.geometry, label))
@@ -106,16 +106,17 @@ async def _update_db() -> None:
         await set_state_doc('country', {'update_timestamp': data_timestamp}, session=s)
 
     print('🗺️ Updating country codes')
-    from states.aed_state import get_aed_state
+    from states.aed_state import AEDState
 
-    aed_state = get_aed_state()
-    await aed_state.update_country_codes()
+    await AEDState.update_country_codes()
 
     print('🗺️ Update complete')
 
 
 class CountryState:
-    async def update_db_task(self, *, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
+    @staticmethod
+    @trace
+    async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
         if (await _should_update_db())[1] > 0:
             task_status.started()
             started = True
@@ -129,7 +130,9 @@ class CountryState:
                 started = True
             await anyio.sleep(COUNTRY_UPDATE_DELAY.total_seconds())
 
-    async def get_all_countries(self, filter: dict | None = None) -> Sequence[Country]:
+    @staticmethod
+    @trace
+    async def get_all_countries(filter: dict | None = None) -> Sequence[Country]:
         cursor = COUNTRY_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
@@ -138,8 +141,9 @@ class CountryState:
 
         return tuple(result)
 
-    async def get_countries_within(self, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
-        return await self.get_all_countries(
+    @classmethod
+    async def get_countries_within(cls, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
+        return await cls.get_all_countries(
             {
                 'geometry': {
                     '$geoIntersects': {
@@ -152,13 +156,3 @@ class CountryState:
                 }
             }
         )
-
-
-_instance = CountryState()
-
-
-def get_country_state() -> CountryState:
-    return _instance
-
-
-CountryStateDep = Annotated[CountryState, Depends(get_country_state)]

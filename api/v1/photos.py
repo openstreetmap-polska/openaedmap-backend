@@ -14,9 +14,9 @@ from config import IMAGE_CONTENT_TYPES, REMOTE_IMAGE_MAX_FILE_SIZE
 from middlewares.cache_middleware import configure_cache
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
 from osm_change import update_node_tags_osm_change
-from states.aed_state import AEDStateDep
-from states.photo_report_state import PhotoReportStateDep
-from states.photo_state import PhotoStateDep
+from states.aed_state import AEDState
+from states.photo_report_state import PhotoReportState
+from states.photo_state import PhotoState
 from utils import get_http_client, get_wikimedia_commons_url
 
 router = APIRouter(prefix='/photos')
@@ -51,8 +51,8 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
 
 @router.get('/view/{id}.webp')
 @configure_cache(timedelta(days=365), stale=timedelta(days=365))
-async def view(id: str, photo_state: PhotoStateDep) -> FileResponse:
-    info = await photo_state.get_photo_by_id(id)
+async def view(id: str) -> FileResponse:
+    info = await PhotoState.get_photo_by_id(id)
 
     if info is None:
         raise HTTPException(404, f'Photo {id!r} not found')
@@ -94,8 +94,6 @@ async def upload(
     file_license: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     oauth2_credentials: Annotated[str, Form()],
-    aed_state: AEDStateDep,
-    photo_state: PhotoStateDep,
 ) -> bool:
     file_license = file_license.upper()
     accept_licenses = ('CC0',)
@@ -117,7 +115,7 @@ async def upload(
     if 'access_token' not in oauth2_credentials_:
         raise HTTPException(400, 'OAuth2 credentials must contain an access_token field')
 
-    aed = await aed_state.get_aed_by_id(node_id)
+    aed = await AEDState.get_aed_by_id(node_id)
     if aed is None:
         raise HTTPException(404, f'Node {node_id} not found, perhaps it is not an AED?')
 
@@ -129,7 +127,7 @@ async def upload(
     if osm_user_has_active_block(osm_user):
         raise HTTPException(403, 'User has an active block on OpenStreetMap')
 
-    photo_info = await photo_state.set_photo(node_id, osm_user['id'], file)
+    photo_info = await PhotoState.set_photo(node_id, osm_user['id'], file)
     photo_url = f'{request.base_url}api/v1/photos/view/{photo_info.id}.webp'
 
     node_xml = await osm.get_node_xml(node_id)
@@ -147,26 +145,19 @@ async def upload(
 
 
 @router.post('/report')
-async def report(
-    id: Annotated[str, Form()],
-    photo_report_state: PhotoReportStateDep,
-) -> bool:
-    return await photo_report_state.report_by_photo_id(id)
+async def report(id: Annotated[str, Form()]) -> bool:
+    return await PhotoReportState.report_by_photo_id(id)
 
 
 @router.get('/report/rss.xml')
-async def report_rss(
-    request: Request,
-    photo_state: PhotoStateDep,
-    photo_report_state: PhotoReportStateDep,
-) -> Response:
+async def report_rss(request: Request) -> Response:
     fg = FeedGenerator()
     fg.title('AED Photo Reports')
     fg.description('This feed contains a list of recent AED photo reports')
     fg.link(href=str(request.url), rel='self')
 
-    for report in await photo_report_state.get_recent_reports():
-        info = await photo_state.get_photo_by_id(report.photo_id)
+    for report in await PhotoReportState.get_recent_reports():
+        info = await PhotoState.get_photo_by_id(report.photo_id)
 
         if info is None:
             continue

@@ -27,10 +27,8 @@ with pkgs; dockerTools.buildLayeredImage {
     set -e
     mkdir tmp
     mkdir app && cd app
-    cp "${./.}"/LICENSE .
     cp "${./.}"/*.py .
     cp -r "${./.}"/api .
-    cp -r "${./.}"/cython_lib .
     cp -r "${./.}"/middlewares .
     cp -r "${./.}"/models .
     cp -r "${./.}"/states .
@@ -41,7 +39,6 @@ with pkgs; dockerTools.buildLayeredImage {
   config = {
     WorkingDir = "/app";
     Env = [
-      "LD_LIBRARY_PATH=${lib.makeLibraryPath shell.libraries}"
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"

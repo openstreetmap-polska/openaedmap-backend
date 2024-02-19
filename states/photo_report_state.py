@@ -1,11 +1,10 @@
 import secrets
 from collections.abc import Sequence
 from time import time
-from typing import Annotated
 
 import pymongo
 from dacite import from_dict
-from fastapi import Depends
+from sentry_sdk import trace
 
 from config import PHOTO_REPORT_COLLECTION
 from models.photo_report import PhotoReport
@@ -14,7 +13,9 @@ from utils import as_dict
 
 
 class PhotoReportState:
-    async def report_by_photo_id(self, photo_id: str) -> bool:
+    @staticmethod
+    @trace
+    async def report_by_photo_id(photo_id: str) -> bool:
         photo_state = get_photo_state()
         photo_info = await photo_state.get_photo_by_id(photo_id)
 
@@ -36,7 +37,9 @@ class PhotoReportState:
 
         return True
 
-    async def get_recent_reports(self, count: int = 10) -> Sequence[PhotoReport]:
+    @staticmethod
+    @trace
+    async def get_recent_reports(count: int = 10) -> Sequence[PhotoReport]:
         cursor = (
             PHOTO_REPORT_COLLECTION.find(projection={'_id': False}).sort('timestamp', pymongo.DESCENDING).limit(count)
         )
@@ -47,13 +50,3 @@ class PhotoReportState:
             result.append(from_dict(PhotoReport, c))  # noqa: PERF401
 
         return tuple(result)
-
-
-_instance = PhotoReportState()
-
-
-def get_photo_report_state() -> PhotoReportState:
-    return _instance
-
-
-PhotoReportStateDep = Annotated[PhotoReportState, Depends(get_photo_report_state)]

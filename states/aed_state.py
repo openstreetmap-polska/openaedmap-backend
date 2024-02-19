@@ -1,13 +1,13 @@
 from collections.abc import Iterable, Sequence
+from functools import lru_cache
 from time import time
-from typing import Annotated, NoReturn
+from typing import NoReturn
 
 import anyio
-from asyncache import cached
-from cachetools import TTLCache
 from dacite import from_dict
-from fastapi import Depends
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
+from sentry_sdk import start_span, trace
+from sentry_sdk.tracing import Span
 from shapely.geometry import mapping
 from sklearn.cluster import Birch
 from tqdm import tqdm
@@ -21,7 +21,7 @@ from overpass import query_overpass
 from planet_diffs import get_planet_diffs
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, print_run_time, retry_exponential
+from utils import as_dict, retry_exponential
 
 _AED_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
@@ -44,18 +44,16 @@ def _is_defibrillator(tags: dict[str, str]) -> bool:
 
 
 async def _assign_country_codes(aeds: Sequence[AED]) -> None:
-    from states.country_state import get_country_state
-
-    country_state = get_country_state()
+    from states.country_state import CountryState
 
     if len(aeds) < 100:
         bulk_write_args = []
         for aed in aeds:
-            countries = await country_state.get_countries_within(aed.position)
+            countries = await CountryState.get_countries_within(aed.position)
             country_codes = tuple({c.code for c in countries})
             bulk_write_args.append(UpdateOne({'id': aed.id}, {'$set': {'country_codes': country_codes}}))
     else:
-        countries = await country_state.get_all_countries()
+        countries = await CountryState.get_all_countries()
         id_codes_map = {aed.id: set() for aed in aeds}
 
         for country in tqdm(countries, desc='📫 Iterating over countries'):
@@ -197,7 +195,9 @@ async def _update_db() -> None:
 
 
 class AEDState:
-    async def update_db_task(self, *, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
+    @staticmethod
+    @trace
+    async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
         if (await _should_update_db())[1] > 0:
             task_status.started()
             started = True
@@ -211,14 +211,26 @@ class AEDState:
                 started = True
             await anyio.sleep(AED_UPDATE_DELAY.total_seconds())
 
-    async def update_country_codes(self) -> None:
-        await _assign_country_codes(await self.get_all_aeds())
+    @classmethod
+    @trace
+    async def update_country_codes(cls) -> None:
+        await _assign_country_codes(await cls.get_all_aeds())
 
-    @cached(TTLCache(maxsize=1024, ttl=300))
-    async def count_aeds_by_country_code(self, country_code: str) -> int:
+    @lru_cache(maxsize=1024)
+    @staticmethod
+    @trace
+    async def count_aeds_by_country_code(country_code: str) -> int:
         return await AED_COLLECTION.count_documents({'country_codes': country_code})
 
-    async def get_all_aeds(self, filter: dict | None = None) -> Sequence[AED]:
+    @staticmethod
+    @trace
+    async def get_aed_by_id(aed_id: int) -> AED | None:
+        doc = await AED_COLLECTION.find_one({'id': aed_id}, projection={'_id': False})
+        return from_dict(AED, doc) if doc else None
+
+    @staticmethod
+    @trace
+    async def get_all_aeds(filter: dict | None = None) -> Sequence[AED]:
         cursor = AED_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
@@ -227,14 +239,13 @@ class AEDState:
 
         return tuple(result)
 
-    async def get_aeds_by_country_code(self, country_code: str) -> Sequence[AED]:
-        return await self.get_all_aeds({'country_codes': country_code})
+    @classmethod
+    async def get_aeds_by_country_code(cls, country_code: str) -> Sequence[AED]:
+        return await cls.get_all_aeds({'country_codes': country_code})
 
-    async def get_aeds_within(self, bbox: BBox, group_eps: float | None) -> Sequence[AED | AEDGroup]:
-        return await self.get_aeds_within_geom(bbox.to_polygon(), group_eps)
-
-    async def get_aeds_within_geom(self, geometry, group_eps: float | None) -> Sequence[AED | AEDGroup]:
-        aeds = await self.get_all_aeds({'position': {'$geoIntersects': {'$geometry': mapping(geometry)}}})
+    @classmethod
+    async def get_aeds_within_geom(cls, geometry, group_eps: float | None) -> Sequence[AED | AEDGroup]:
+        aeds = await cls.get_all_aeds({'position': {'$geoIntersects': {'$geometry': mapping(geometry)}}})
 
         if len(aeds) <= 1 or group_eps is None:
             return aeds
@@ -242,10 +253,10 @@ class AEDState:
         result_positions = tuple(tuple(iter(aed.position)) for aed in aeds)
         model = Birch(threshold=group_eps, n_clusters=None, copy=False)
 
-        with print_run_time(f'Clustering {len(aeds)} samples'):
+        with start_span(Span(description=f'Clustering {len(aeds)} samples')):
             clusters = model.fit_predict(result_positions)
 
-        with print_run_time(f'Processing {len(aeds)} samples'):
+        with start_span(Span(description=f'Processing {len(aeds)} samples')):
             result: list[AED | AEDGroup] = []
             cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
 
@@ -270,16 +281,6 @@ class AEDState:
 
         return tuple(result)
 
-    async def get_aed_by_id(self, aed_id: int) -> AED | None:
-        doc = await AED_COLLECTION.find_one({'id': aed_id}, projection={'_id': False})
-        return from_dict(AED, doc) if doc else None
-
-
-_instance = AEDState()
-
-
-def get_aed_state() -> AEDState:
-    return _instance
-
-
-AEDStateDep = Annotated[AEDState, Depends(get_aed_state)]
+    @classmethod
+    async def get_aeds_within_bbox(cls, bbox: BBox, group_eps: float | None) -> Sequence[AED | AEDGroup]:
+        return await cls.get_aeds_within_geom(bbox.to_polygon(), group_eps)

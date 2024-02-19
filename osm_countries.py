@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 import brotlicffi as brotli
 import orjson
+from sentry_sdk import trace
 from shapely.geometry import shape
 
 from config import COUNTRIES_GEOJSON_URL
@@ -9,6 +10,7 @@ from models.osm_country import OSMCountry
 from utils import get_http_client
 
 
+@trace
 async def get_osm_countries() -> Sequence[OSMCountry]:
     async with get_http_client() as http:
         r = await http.get(COUNTRIES_GEOJSON_URL)

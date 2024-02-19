@@ -1,12 +1,14 @@
 from collections.abc import Sequence
 from itertools import chain
+from math import atan, degrees, pi, sinh
 from typing import Annotated
 
-import anyio
 import mapbox_vector_tile as mvt
 import numpy as np
-from anyio.streams.memory import MemoryObjectSendStream
+from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
+from sentry_sdk import start_span
+from sentry_sdk.tracing import Span
 from shapely.ops import transform
 
 from config import (
@@ -20,21 +22,50 @@ from config import (
     TILE_MAX_Z,
     TILE_MIN_Z,
 )
-from cython_lib.geo_utils import tile_to_bbox
 from middlewares.cache_middleware import make_cache_control
 from models.aed import AED
 from models.bbox import BBox
 from models.country import Country
-from states.aed_state import AEDState, AEDStateDep
-from states.country_state import CountryState, CountryStateDep
-from utils import abbreviate, print_run_time
+from models.lonlat import LonLat
+from states.aed_state import AEDState
+from states.country_state import CountryState
+from utils import abbreviate
 
 router = APIRouter()
 
 
-async def _count_aed_in_country(country: Country, aed_state: AEDState, send_stream: MemoryObjectSendStream) -> None:
-    count = await aed_state.count_aeds_by_country_code(country.code)
-    await send_stream.send((country, count))
+def _tile_to_lonlat(z: int, x: int, y: int) -> tuple[float, float]:
+    n = 2**z
+    lon_deg = x / n * 360.0 - 180.0
+    lat_rad = atan(sinh(pi * (1 - 2 * y / n)))
+    lat_deg = degrees(lat_rad)
+    return lon_deg, lat_deg
+
+
+def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
+    p1_lon, p1_lat = _tile_to_lonlat(z, x, y)
+    p2_lon, p2_lat = _tile_to_lonlat(z, x + 1, y + 1)
+    return BBox(LonLat(p1_lon, p2_lat), LonLat(p2_lon, p1_lat))
+
+
+@router.get('/tile/{z}/{x}/{y}.mvt')
+async def get_tile(
+    z: Annotated[int, Path(ge=TILE_MIN_Z, le=TILE_MAX_Z)],
+    x: Annotated[int, Path(ge=0)],
+    y: Annotated[int, Path(ge=0)],
+):
+    bbox = _tile_to_bbox(z, x, y)
+    assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
+    assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
+
+    if z <= TILE_COUNTRIES_MAX_Z:
+        content = await _get_tile_country(z, bbox)
+        headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
+    else:
+        content = await _get_tile_aed(z, bbox)
+        headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE)}
+
+    return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')
 
 
 def _mvt_rescale(x, y, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple:
@@ -53,35 +84,33 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
     x_span = x_max - x_min
     y_span = y_max - y_min
 
-    with print_run_time('Transforming MVT geometry'):
+    with start_span(Span(description='Transforming MVT geometry')):
         for feature in chain.from_iterable(d['features'] for d in data):
             feature['geometry'] = transform(
                 func=lambda x, y: _mvt_rescale(x, y, x_min, y_min, x_span, y_span),
                 geom=feature['geometry'],
             )
 
-    with print_run_time('Encoding MVT'):
+    with start_span(Span(description='Encoding MVT')):
         return mvt.encode(data, default_options={'extents': MVT_EXTENT})
 
 
-async def _get_tile_country(z: int, bbox: BBox, country_state: CountryState, aed_state: AEDState) -> bytes:
-    with print_run_time('Querying countries'):
-        countries = await country_state.get_countries_within(bbox)
+async def _get_tile_country(z: int, bbox: BBox) -> bytes:
+    countries = await CountryState.get_countries_within(bbox)
+    country_count_map: dict[str, str] = {}
+
+    with start_span(Span(description='Counting AEDs')):
+
+        async def count_task(country: Country) -> None:
+            count = await AEDState.count_aeds_by_country_code(country.code)
+            country_count_map[country.name] = (count, abbreviate(count))
+
+        async with create_task_group() as tg:
+            for country in countries:
+                tg.start_soon(count_task, country)
 
     simplify_tol = 0.5 / 2**z if z < TILE_MAX_Z else None
     geometries = (country.geometry.simplify(simplify_tol, preserve_topology=False) for country in countries)
-
-    send_stream, receive_stream = anyio.create_memory_object_stream()
-    country_count_map = {}
-
-    with print_run_time('Counting AEDs'):
-        async with anyio.create_task_group() as tg, send_stream, receive_stream:
-            for country in countries:
-                tg.start_soon(_count_aed_in_country, country, aed_state, send_stream)
-
-            for _ in range(len(countries)):
-                country, count = await receive_stream.receive()
-                country_count_map[country.name] = (count, abbreviate(count))
 
     return _mvt_encode(
         bbox,
@@ -115,9 +144,9 @@ async def _get_tile_country(z: int, bbox: BBox, country_state: CountryState, aed
     )
 
 
-async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
+async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
     group_eps = 9.8 / 2**z if z < TILE_MAX_Z else None
-    aeds = await aed_state.get_aeds_within(bbox.extend(0.5), group_eps)
+    aeds = await AEDState.get_aeds_within_bbox(bbox.extend(0.5), group_eps)
 
     return _mvt_encode(
         bbox,
@@ -146,25 +175,3 @@ async def _get_tile_aed(z: int, bbox: BBox, aed_state: AEDState) -> bytes:
             }
         ],
     )
-
-
-@router.get('/tile/{z}/{x}/{y}.mvt')
-async def get_tile(
-    z: Annotated[int, Path(ge=TILE_MIN_Z, le=TILE_MAX_Z)],
-    x: Annotated[int, Path(ge=0)],
-    y: Annotated[int, Path(ge=0)],
-    country_state: CountryStateDep,
-    aed_state: AEDStateDep,
-):
-    bbox = tile_to_bbox(z, x, y)
-    assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
-    assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
-
-    if z <= TILE_COUNTRIES_MAX_Z:
-        content = await _get_tile_country(z, bbox, country_state, aed_state)
-        headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
-    else:
-        content = await _get_tile_aed(z, bbox, aed_state)
-        headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE)}
-
-    return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')

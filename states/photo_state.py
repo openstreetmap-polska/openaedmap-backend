@@ -1,12 +1,11 @@
 import secrets
 from io import BytesIO
 from time import time
-from typing import Annotated
 
-import anyio
 from dacite import from_dict
-from fastapi import Depends, UploadFile
+from fastapi import UploadFile
 from PIL import Image, ImageOps
+from sentry_sdk import trace
 
 from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE, PHOTO_COLLECTION
 from models.photo_info import PhotoInfo
@@ -76,7 +75,9 @@ def _optimize_image(img: Image.Image, format: str = 'WEBP') -> bytes:
 
 
 class PhotoState:
-    async def get_photo_by_id(self, id: str, *, check_file: bool = True) -> PhotoInfo | None:
+    @staticmethod
+    @trace
+    async def get_photo_by_id(id: str, *, check_file: bool = True) -> PhotoInfo | None:
         doc = await PHOTO_COLLECTION.find_one({'id': id}, projection={'_id': False})
 
         if doc is None:
@@ -89,7 +90,9 @@ class PhotoState:
 
         return info
 
-    async def set_photo(self, node_id: int, user_id: int, file: UploadFile) -> PhotoInfo:
+    @staticmethod
+    @trace
+    async def set_photo(node_id: int, user_id: int, file: UploadFile) -> PhotoInfo:
         info = PhotoInfo(
             id=secrets.token_urlsafe(16),
             node_id=str(node_id),
@@ -100,18 +103,8 @@ class PhotoState:
         img = Image.open(file.file)
         img = ImageOps.exif_transpose(img)
         img = _resize_image(img)
-        img_bytes = await anyio.to_thread.run_sync(_optimize_image, img)
+        img_bytes = _optimize_image(img)
 
         await info.path.write_bytes(img_bytes)
         await PHOTO_COLLECTION.insert_one(as_dict(info))
         return info
-
-
-_instance = PhotoState()
-
-
-def get_photo_state() -> PhotoState:
-    return _instance
-
-
-PhotoStateDep = Annotated[PhotoState, Depends(get_photo_state)]

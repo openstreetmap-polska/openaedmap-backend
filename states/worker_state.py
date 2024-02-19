@@ -2,11 +2,9 @@ import fcntl
 import os
 from datetime import timedelta
 from enum import Enum
-from typing import Annotated
 
 import anyio
 import psutil
-from fastapi import Depends
 
 from config import NAME
 from utils import retry_exponential
@@ -16,7 +14,7 @@ _STATE_PATH = anyio.Path(f'/tmp/{NAME}-worker.state')
 _LOCK_PATH = anyio.Path(f'/tmp/{NAME}-worker.lock')
 
 
-class WorkerStateEnum(Enum):
+class WorkerStateEnum(str, Enum):
     STARTUP = 'startup'
     RUNNING = 'running'
 
@@ -60,13 +58,3 @@ class WorkerState:
     async def wait_for_state(self, state: WorkerStateEnum) -> None:
         while await self.get_state() != state:
             await anyio.sleep(0.1)
-
-
-_instance = WorkerState()
-
-
-def get_worker_state() -> WorkerState:
-    return _instance
-
-
-WorkerStateDep = Annotated[WorkerState, Depends(get_worker_state)]
