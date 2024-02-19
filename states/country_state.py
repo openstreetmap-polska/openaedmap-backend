@@ -3,19 +3,18 @@ from time import time
 from typing import NoReturn
 
 import anyio
-from dacite import from_dict
 from sentry_sdk import start_transaction, trace
-from shapely.geometry import Point, mapping, shape
+from shapely.geometry import Point, mapping
 from shapely.geometry.base import BaseGeometry
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
 from models.bbox import BBox
 from models.country import Country, CountryLabel
-from models.lonlat import LonLat
 from osm_countries import get_osm_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, retry_exponential
+from utils import retry_exponential
+from validators.geometry import geometry_validator
 
 
 class CountryCodeAssigner:
@@ -94,16 +93,16 @@ async def _update_db() -> None:
         return
 
     country_code_assigner = CountryCodeAssigner()
-    countries: list[Country] = []
+    insert_many_arg = []
 
     for c in osm_countries:
-        names = _get_names(c.tags)
-        code = country_code_assigner.get_unique(c.tags)
-        label_position = LonLat(c.representative_point.x, c.representative_point.y)
-        label = CountryLabel(label_position)
-        countries.append(Country(names, code, c.geometry, label))
-
-    insert_many_arg = tuple(as_dict(c) for c in countries)
+        country = Country(
+            names=_get_names(c.tags),
+            code=country_code_assigner.get_unique(c.tags),
+            geometry=c.geometry,
+            label=CountryLabel(position=c.representative_point),
+        )
+        insert_many_arg.append(country.model_dump())
 
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
@@ -144,26 +143,27 @@ class CountryState:
         cursor = COUNTRY_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
-        async for c in cursor:
-            geometry = shape_cache.get(c['code'])
+        async for doc in cursor:
+            geometry = shape_cache.get(doc['code'])
             if geometry is None:
-                geometry = shape(c['geometry'])
-                shape_cache[c['code']] = geometry
+                geometry = geometry_validator(doc['geometry'])
+                shape_cache[doc['code']] = geometry
 
-            result.append(from_dict(Country, {**c, 'geometry': geometry}))
+            doc['geometry'] = geometry
+            result.append(Country.model_construct(doc))
 
-        return tuple(result)
+        return result
 
     @classmethod
-    async def get_countries_within(cls, bbox_or_pos: BBox | LonLat) -> Sequence[Country]:
+    async def get_countries_within(cls, bbox_or_pos: BBox | Point) -> Sequence[Country]:
         return await cls.get_all_countries(
             {
                 'geometry': {
                     '$geoIntersects': {
                         '$geometry': mapping(
                             bbox_or_pos.to_polygon(nodes_per_edge=8)
-                            if isinstance(bbox_or_pos, BBox)
-                            else Point(bbox_or_pos.lon, bbox_or_pos.lat)
+                            if isinstance(bbox_or_pos, BBox)  #
+                            else bbox_or_pos
                         )
                     }
                 }

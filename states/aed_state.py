@@ -5,10 +5,11 @@ from typing import NoReturn
 import anyio
 from asyncache import cached
 from cachetools import TTLCache
-from dacite import from_dict
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from sentry_sdk import start_span, start_transaction, trace
+from shapely import Point
 from shapely.geometry import mapping
+from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
 from tqdm import tqdm
 
@@ -16,12 +17,12 @@ from config import AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
 from models.aed import AED
 from models.aed_group import AEDGroup
 from models.bbox import BBox
-from models.lonlat import LonLat
 from overpass import query_overpass
 from planet_diffs import get_planet_diffs
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import as_dict, retry_exponential
+from utils import retry_exponential
+from validators.geometry import geometry_validator
 
 _AED_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
@@ -55,7 +56,7 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
         id_codes_map = {aed.id: set() for aed in aeds}
 
         for country in tqdm(countries, desc='📫 Iterating over countries'):
-            async for c in AED_COLLECTION.find(
+            async for doc in AED_COLLECTION.find(
                 {
                     '$and': [
                         {'id': {'$in': tuple(id_codes_map)}},
@@ -63,16 +64,12 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
                     ]
                 }
             ):
-                id_codes_map[c['id']].add(country.code)
+                id_codes_map[doc['id']].add(country.code)
 
         bulk_write_args = [
             UpdateOne(
                 {'id': aed.id},
-                {
-                    '$set': {
-                        'country_codes': tuple(id_codes_map[aed.id]),
-                    }
-                },
+                {'$set': {'country_codes': tuple(id_codes_map[aed.id])}},
             )
             for aed in aeds
         ]
@@ -91,7 +88,7 @@ def _process_overpass_node(node: dict) -> AED:
     assert is_valid, 'Unexpected non-defibrillator node'
     return AED(
         id=node['id'],
-        position=LonLat(node['lon'], node['lat']),
+        position=Point(node['lon'], node['lat']),
         country_codes=None,
         tags=tags,
         version=node['version'],
@@ -103,7 +100,7 @@ async def _update_db_snapshot() -> None:
     print('🩺 Updating aed database (overpass)...')
     elements, data_timestamp = await query_overpass(_AED_QUERY, timeout=3600, must_return=True)
     aeds = tuple(_process_overpass_node(e) for e in elements)
-    insert_many_arg = tuple(as_dict(aed) for aed in aeds)
+    insert_many_arg = tuple(aed.model_dump() for aed in aeds)
 
     async with Transaction() as s:
         await AED_COLLECTION.delete_many({}, session=s)
@@ -122,25 +119,23 @@ def _parse_xml_tags(data: dict) -> dict[str, str]:
     return {tag['@k']: tag['@v'] for tag in tags}
 
 
-def _process_action(action: dict) -> Iterable[AED | str]:
-    def _process_create_or_modify(node: dict) -> AED | str:
+def _process_action(action: dict) -> Iterable[AED | int]:
+    def _process_create_or_modify(node: dict) -> AED | int:
         node_tags = _parse_xml_tags(node)
         node_valid = _is_defibrillator(node_tags)
-        node_id = int(node['@id'])
         if node_valid:
             return AED(
-                id=node_id,
-                position=LonLat(float(node['@lon']), float(node['@lat'])),
+                id=node['@id'],
+                position=Point(node['@lon'], node['@lat']),
                 country_codes=None,
                 tags=node_tags,
-                version=int(node['@version']),
+                version=node['@version'],
             )
         else:
-            return node_id
+            return node['@id']
 
     def _process_delete(node: dict) -> str:
-        node_id = int(node['@id'])
-        return node_id
+        return node['@id']
 
     if action['@type'] in ('create', 'modify'):
         return (_process_create_or_modify(node) for node in action['node'])
@@ -159,8 +154,8 @@ async def _update_db_diffs(last_update: float) -> None:
         print('🩺 Nothing to update')
         return
 
-    aeds = []
-    remove_ids = set()
+    aeds: list[AED] = []
+    remove_ids: set[int] = set()
 
     for action in actions:
         for result in _process_action(action):
@@ -169,8 +164,8 @@ async def _update_db_diffs(last_update: float) -> None:
             else:
                 remove_ids.add(result)
 
-    bulk_write_arg = [ReplaceOne({'id': aed.id}, as_dict(aed), upsert=True) for aed in aeds]
-    bulk_write_arg += [DeleteOne({'id': remove_id}) for remove_id in remove_ids]
+    bulk_write_arg = [ReplaceOne({'id': aed.id}, aed.model_dump(), upsert=True) for aed in aeds]
+    bulk_write_arg.extend(DeleteOne({'id': remove_id}) for remove_id in remove_ids)
 
     # keep transaction as short as possible: avoid doing any computation inside
     async with Transaction() as s:
@@ -231,7 +226,12 @@ class AEDState:
     @trace
     async def get_aed_by_id(aed_id: int) -> AED | None:
         doc = await AED_COLLECTION.find_one({'id': aed_id}, projection={'_id': False})
-        return from_dict(AED, doc) if doc else None
+        if doc is None:
+            return None
+
+        doc['position'] = geometry_validator(doc['position'])
+        aed = AED.model_construct(doc)
+        return aed
 
     @staticmethod
     @trace
@@ -239,31 +239,33 @@ class AEDState:
         cursor = AED_COLLECTION.find(filter, projection={'_id': False})
         result = []
 
-        async for c in cursor:
-            result.append(from_dict(AED, c))  # noqa: PERF401
+        async for doc in cursor:
+            doc['position'] = geometry_validator(doc['position'])
+            aed = AED.model_construct(doc)
+            result.append(aed)
 
-        return tuple(result)
+        return result
 
     @classmethod
     async def get_aeds_by_country_code(cls, country_code: str) -> Sequence[AED]:
         return await cls.get_all_aeds({'country_codes': country_code})
 
     @classmethod
-    async def get_aeds_within_geom(cls, geometry, group_eps: float | None) -> Sequence[AED | AEDGroup]:
+    async def get_aeds_within_geom(cls, geometry: BaseGeometry, group_eps: float | None) -> Sequence[AED | AEDGroup]:
         aeds = await cls.get_all_aeds({'position': {'$geoIntersects': {'$geometry': mapping(geometry)}}})
 
         if len(aeds) <= 1 or group_eps is None:
             return aeds
 
-        result_positions = tuple(tuple(iter(aed.position)) for aed in aeds)
         model = Birch(threshold=group_eps, n_clusters=None, copy=False)
+        aeds_positions = tuple(tuple(aed.position.x, aed.position.y) for aed in aeds)
 
         with start_span(description=f'Clustering {len(aeds)} samples'):
-            clusters = model.fit_predict(result_positions)
+            clusters = model.fit_predict(aeds_positions)
 
         with start_span(description=f'Processing {len(aeds)} samples'):
-            result: list[AED | AEDGroup] = []
             cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
+            result: list[AED | AEDGroup] = []
 
             for aed, cluster in zip(aeds, clusters, strict=True):
                 cluster_groups[cluster].append(aed)
@@ -278,13 +280,13 @@ class AEDState:
 
                 result.append(
                     AEDGroup(
-                        position=LonLat(center[0], center[1]),
+                        position=Point(center[0], center[1]),
                         count=len(group),
                         access=AEDGroup.decide_access(aed.access for aed in group),
                     )
                 )
 
-        return tuple(result)
+        return result
 
     @classmethod
     async def get_aeds_within_bbox(cls, bbox: BBox, group_eps: float | None) -> Sequence[AED | AEDGroup]:

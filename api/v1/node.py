@@ -4,10 +4,10 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
 from pytz import timezone
+from shapely import Point
 from tzfpy import get_tz
 
 from middlewares.cache_middleware import configure_cache
-from models.lonlat import LonLat
 from states.aed_state import AEDState
 from states.photo_state import PhotoState
 from utils import get_wikimedia_commons_url
@@ -17,8 +17,8 @@ router = APIRouter()
 photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
 
 
-def _get_timezone(lonlat: LonLat) -> tuple[str | None, str | None]:
-    timezone_name: str | None = get_tz(lonlat.lon, lonlat.lat)
+def _get_timezone(position: Point) -> tuple[str | None, str | None]:
+    timezone_name: str | None = get_tz(position.x, position.y)
     timezone_offset = None
 
     if timezone_name:
@@ -97,8 +97,8 @@ async def get_node(node_id: int):
                 **timezone_dict,
                 'type': 'node',
                 'id': aed.id,
-                'lat': aed.position.lat,
-                'lon': aed.position.lon,
+                'lat': aed.position.y,
+                'lon': aed.position.x,
                 'tags': aed.tags,
                 'version': aed.version,
             }

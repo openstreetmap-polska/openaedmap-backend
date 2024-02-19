@@ -1,12 +1,12 @@
-from dataclasses import dataclass
-
 from anyio import Path
+from pydantic import BaseModel, ConfigDict
 
 from config import PHOTOS_DIR
 
 
-@dataclass(frozen=True, slots=True)
-class PhotoInfo:
+class PhotoInfo(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
     id: str
     node_id: str
     user_id: str

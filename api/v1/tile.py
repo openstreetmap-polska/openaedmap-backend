@@ -8,6 +8,7 @@ import numpy as np
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span, trace
+from shapely import Point
 from shapely.ops import transform
 
 from config import (
@@ -25,7 +26,6 @@ from middlewares.cache_middleware import make_cache_control
 from models.aed import AED
 from models.bbox import BBox
 from models.country import Country
-from models.lonlat import LonLat
 from states.aed_state import AEDState
 from states.country_state import CountryState
 from utils import abbreviate
@@ -33,18 +33,18 @@ from utils import abbreviate
 router = APIRouter()
 
 
-def _tile_to_lonlat(z: int, x: int, y: int) -> tuple[float, float]:
+def _tile_to_point(z: int, x: int, y: int) -> Point:
     n = 2**z
     lon_deg = x / n * 360.0 - 180.0
     lat_rad = atan(sinh(pi * (1 - 2 * y / n)))
     lat_deg = degrees(lat_rad)
-    return lon_deg, lat_deg
+    return Point(lon_deg, lat_deg)
 
 
 def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
-    p1_lon, p1_lat = _tile_to_lonlat(z, x, y)
-    p2_lon, p2_lat = _tile_to_lonlat(z, x + 1, y + 1)
-    return BBox(LonLat(p1_lon, p2_lat), LonLat(p2_lon, p1_lat))
+    p1 = _tile_to_point(z, x, y)
+    p2 = _tile_to_point(z, x + 1, y + 1)
+    return BBox(p1, p2)
 
 
 @router.get('/tile/{z}/{x}/{y}.mvt')
@@ -54,8 +54,6 @@ async def get_tile(
     y: Annotated[int, Path(ge=0)],
 ):
     bbox = _tile_to_bbox(z, x, y)
-    assert bbox.p1.lon <= bbox.p2.lon, f'{bbox.p1.lon=} <= {bbox.p2.lon=}'
-    assert bbox.p1.lat <= bbox.p2.lat, f'{bbox.p1.lat=} <= {bbox.p2.lat=}'
 
     if z <= TILE_COUNTRIES_MAX_Z:
         content = await _get_tile_country(z, bbox)
@@ -67,13 +65,12 @@ async def get_tile(
     return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')
 
 
-def _mvt_rescale(x, y, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple:
-    x_mvt, y_mvt = MVT_TRANSFORMER.transform(np.array(x), np.array(y))
+def _mvt_rescale(x: float, y: float, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple[int, int]:
+    x_mvt, y_mvt = MVT_TRANSFORMER.transform(x, y)
 
     # subtract minimum boundary and scale to MVT extent
-    x_scaled = np.rint((x_mvt - x_min) / x_span * MVT_EXTENT).astype(int)
-    y_scaled = np.rint((y_mvt - y_min) / y_span * MVT_EXTENT).astype(int)
-
+    x_scaled = int((x_mvt - x_min) / x_span * MVT_EXTENT)
+    y_scaled = int((y_mvt - y_min) / y_span * MVT_EXTENT)
     return x_scaled, y_scaled
 
 
@@ -135,7 +132,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
                 'name': 'defibrillators',
                 'features': [
                     {
-                        'geometry': country.label.position.shapely,
+                        'geometry': country.label.position,
                         'properties': {
                             'country_name': country.name,
                             'country_code': country.code,
@@ -162,7 +159,7 @@ async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
                 'name': 'defibrillators',
                 'features': [
                     {
-                        'geometry': aed.position.shapely,
+                        'geometry': aed.position,
                         'properties': {
                             'node_id': aed.id,
                             'access': aed.access,
@@ -170,7 +167,7 @@ async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
                     }
                     if isinstance(aed, AED)
                     else {
-                        'geometry': aed.position.shapely,
+                        'geometry': aed.position,
                         'properties': {
                             'point_count': aed.count,
                             'point_count_abbreviated': abbreviate(aed.count),

@@ -1,12 +1,16 @@
-from dataclasses import dataclass
+from typing import Annotated
 
-from models.lonlat import LonLat
+from pydantic import BaseModel, ConfigDict
+from shapely import Point
+
+from validators.geometry import GeometrySerializer, GeometryValidator
 
 
-@dataclass(frozen=True, slots=True)
-class AED:
+class AED(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
     id: int
-    position: LonLat
+    position: Annotated[Point, GeometryValidator, GeometrySerializer]
     country_codes: list[str] | None
     tags: dict[str, str]
     version: int

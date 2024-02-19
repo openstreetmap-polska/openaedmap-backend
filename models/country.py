@@ -1,20 +1,24 @@
-from dataclasses import dataclass
+from typing import Annotated
 
+from pydantic import BaseModel, ConfigDict
+from shapely import Point
 from shapely.geometry.base import BaseGeometry
 
-from models.lonlat import LonLat
+from validators.geometry import GeometrySerializer, GeometryValidator
 
 
-@dataclass(frozen=True, slots=True)
-class CountryLabel:
-    position: LonLat
+class CountryLabel(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    position: Annotated[Point, GeometryValidator, GeometrySerializer]
 
 
-@dataclass(frozen=True, slots=True)
-class Country:
+class Country(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
     names: dict[str, str]
     code: str
-    geometry: BaseGeometry
+    geometry: Annotated[BaseGeometry, GeometryValidator, GeometrySerializer]
     label: CountryLabel
 
     @property

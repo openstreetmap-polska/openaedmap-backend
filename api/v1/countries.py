@@ -71,7 +71,7 @@ async def get_geojson(
         'features': [
             {
                 'type': 'Feature',
-                'geometry': mapping(aed.position.shapely),
+                'geometry': mapping(aed.position),
                 'properties': {
                     '@osm_type': 'node',
                     '@osm_id': aed.id,

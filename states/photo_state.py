@@ -2,14 +2,12 @@ import secrets
 from io import BytesIO
 from time import time
 
-from dacite import from_dict
 from fastapi import UploadFile
 from PIL import Image, ImageOps
 from sentry_sdk import trace
 
 from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE, PHOTO_COLLECTION
 from models.photo_info import PhotoInfo
-from utils import as_dict
 
 
 @trace
@@ -85,7 +83,7 @@ class PhotoState:
         if doc is None:
             return None
 
-        info = from_dict(PhotoInfo, doc)
+        info = PhotoInfo.model_construct(doc)
 
         if check_file and not await info.path.is_file():
             return None
@@ -108,5 +106,5 @@ class PhotoState:
         img_bytes = _optimize_image(img)
 
         await info.path.write_bytes(img_bytes)
-        await PHOTO_COLLECTION.insert_one(as_dict(info))
+        await PHOTO_COLLECTION.insert_one(info.model_dump())
         return info

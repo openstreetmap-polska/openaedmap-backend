@@ -1,13 +1,10 @@
 import functools
 import time
 import traceback
-from dataclasses import asdict
 from datetime import timedelta
-from typing import Any
 
 import anyio
 import httpx
-from shapely.geometry import mapping
 
 from config import USER_AGENT
 
@@ -37,7 +34,7 @@ def retry_exponential(timeout: timedelta | None, *, start: float = 1):
     return decorator
 
 
-def get_http_client(base_url: str = '', *, auth: Any = None) -> httpx.AsyncClient:
+def get_http_client(base_url: str = '', *, auth=None) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         auth=auth,
         base_url=base_url,
@@ -55,16 +52,6 @@ def abbreviate(num: int) -> str:
             return f'{num / divisor:.1f}{suffix}'
 
     return str(num)
-
-
-def as_dict(data) -> dict:
-    d = asdict(data)
-
-    for k, v in d.items():
-        if hasattr(v, '__geo_interface__'):
-            d[k] = mapping(v)
-
-    return d
 
 
 def get_wikimedia_commons_url(path: str) -> str:
