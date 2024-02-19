@@ -51,7 +51,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          nix-shell --pure --run true
           nix-shell --pure --arg isDevelopment false --run true
 
       - name: Export Nix store cache
