@@ -4,7 +4,6 @@ from typing import Annotated
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span
-from sentry_sdk.tracing import Span
 from shapely.geometry import mapping
 
 from middlewares.cache_middleware import configure_cache
@@ -21,7 +20,7 @@ async def get_names(language: str | None = None):
     countries = await CountryState.get_all_countries()
     country_count_map: dict[str, int] = {}
 
-    with start_span(Span(description='Counting AEDs')):
+    with start_span(description='Counting AEDs'):
 
         async def count_task(country: Country) -> None:
             count = await AEDState.count_aeds_by_country_code(country.code)

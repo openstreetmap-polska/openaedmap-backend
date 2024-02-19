@@ -8,7 +8,6 @@ import numpy as np
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span, trace
-from sentry_sdk.tracing import Span
 from shapely.ops import transform
 
 from config import (
@@ -84,14 +83,14 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
     x_span = x_max - x_min
     y_span = y_max - y_min
 
-    with start_span(Span(description='Transforming MVT geometry')):
+    with start_span(description='Transforming MVT geometry'):
         for feature in chain.from_iterable(d['features'] for d in data):
             feature['geometry'] = transform(
                 func=lambda x, y: _mvt_rescale(x, y, x_min, y_min, x_span, y_span),
                 geom=feature['geometry'],
             )
 
-    with start_span(Span(description='Encoding MVT')):
+    with start_span(description='Encoding MVT'):
         return mvt.encode(data, default_options={'extents': MVT_EXTENT})
 
 
@@ -100,7 +99,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
     countries = await CountryState.get_countries_within(bbox)
     country_count_map: dict[str, str] = {}
 
-    with start_span(Span(description='Counting AEDs')):
+    with start_span(description='Counting AEDs'):
 
         async def count_task(country: Country) -> None:
             count = await AEDState.count_aeds_by_country_code(country.code)

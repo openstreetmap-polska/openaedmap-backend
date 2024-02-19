@@ -8,7 +8,6 @@ import xmltodict
 from anyio import create_task_group, fail_after
 from httpx import AsyncClient
 from sentry_sdk import start_span, trace
-from sentry_sdk.tracing import Span
 
 from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, REPLICATION_URL
 from utils import get_http_client, retry_exponential
@@ -73,7 +72,7 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
 
             result: list[tuple[int, list[dict]]] = []
 
-            with start_span(Span(description=f'Processing {len(sequence_numbers)} planet diffs')):
+            with start_span(description=f'Processing {len(sequence_numbers)} planet diffs'):
 
                 @retry_exponential(AED_REBUILD_THRESHOLD)
                 async def _get_planet_diff(sequence_number: int) -> None:

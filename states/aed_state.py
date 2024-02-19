@@ -8,7 +8,6 @@ from cachetools import TTLCache
 from dacite import from_dict
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from sentry_sdk import start_span, start_transaction, trace
-from sentry_sdk.tracing import Span
 from shapely.geometry import mapping
 from sklearn.cluster import Birch
 from tqdm import tqdm
@@ -259,10 +258,10 @@ class AEDState:
         result_positions = tuple(tuple(iter(aed.position)) for aed in aeds)
         model = Birch(threshold=group_eps, n_clusters=None, copy=False)
 
-        with start_span(Span(description=f'Clustering {len(aeds)} samples')):
+        with start_span(description=f'Clustering {len(aeds)} samples'):
             clusters = model.fit_predict(result_positions)
 
-        with start_span(Span(description=f'Processing {len(aeds)} samples')):
+        with start_span(description=f'Processing {len(aeds)} samples'):
             result: list[AED | AEDGroup] = []
             cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
 
