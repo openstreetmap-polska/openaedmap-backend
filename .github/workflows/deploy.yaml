@@ -34,7 +34,7 @@ jobs:
           path: /tmp/nix-cache
 
       - name: Import Nix store cache
-        if: ${{ steps.nix-cache.outputs.cache-hit == 'true' }}
+        if: steps.nix-cache.outputs.cache-hit == 'true'
         run: |
           nix-store --import < /tmp/nix-cache
 
@@ -49,7 +49,7 @@ jobs:
           nix-shell --pure --run true
 
       - name: Export Nix store cache
-        if: ${{ steps.nix-cache.outputs.cache-hit == 'false' }}
+        if: steps.nix-cache.outputs.cache-hit != 'true'
         run: |
           nix-store --export $(find /nix/store -maxdepth 1 -name '*-*') > /tmp/nix-cache
 
