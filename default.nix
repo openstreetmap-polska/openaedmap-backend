@@ -32,8 +32,6 @@ with pkgs; dockerTools.buildLayeredImage {
     cp -r "${./.}"/middlewares .
     cp -r "${./.}"/models .
     cp -r "${./.}"/states .
-    export PATH="${lib.makeBinPath shell.buildInputs}:$PATH"
-    ${shell.shellHook}
   '';
 
   config = {

@@ -2,19 +2,37 @@ import os
 from datetime import timedelta
 
 import pymongo
+import sentry_sdk
 from anyio import Path
 from motor.core import AgnosticDatabase
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import IndexModel
 from pyproj import Transformer
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.pymongo import PyMongoIntegration
 
 NAME = 'openaedmap-backend'
-VERSION = '2.7.0.240219'
+VERSION = '2.7.1'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
 ENVIRONMENT = os.getenv('ENVIRONMENT', None)
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
+
+if ENVIRONMENT:
+    sentry_sdk.init(
+        dsn='https://40b1753c3f72721489ca0bca38bb4566@sentry.monicz.dev/3',
+        release=VERSION,
+        environment=ENVIRONMENT,
+        enable_tracing=True,
+        traces_sample_rate=0.2,
+        trace_propagation_targets=None,
+        profiles_sample_rate=0.2,
+        integrations=[
+            AsyncioIntegration(),
+            PyMongoIntegration(),
+        ],
+    )
 
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')

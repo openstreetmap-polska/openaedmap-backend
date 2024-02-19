@@ -1,14 +1,13 @@
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
-import sentry_sdk
 from anyio import create_task_group
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import api.v1 as v1
-from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE, ENVIRONMENT, VERSION, startup_setup
+from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE, startup_setup
 from middlewares.cache_middleware import CacheMiddleware
 from middlewares.profiler_middleware import profiler_middleware
 from middlewares.version_middleware import version_middleware
@@ -16,17 +15,6 @@ from orjson_response import CustomORJSONResponse
 from states.aed_state import AEDState
 from states.country_state import CountryState
 from states.worker_state import WorkerState, WorkerStateEnum
-
-if ENVIRONMENT:
-    sentry_sdk.init(
-        dsn='https://40b1753c3f72721489ca0bca38bb4566@sentry.monicz.dev/3',
-        release=VERSION,
-        environment=ENVIRONMENT,
-        enable_tracing=True,
-        traces_sample_rate=0.2,
-        trace_propagation_targets=None,
-        profiles_sample_rate=0.2,
-    )
 
 
 @asynccontextmanager
