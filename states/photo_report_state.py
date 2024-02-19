@@ -8,7 +8,7 @@ from sentry_sdk import trace
 
 from config import PHOTO_REPORT_COLLECTION
 from models.photo_report import PhotoReport
-from states.photo_state import get_photo_state
+from states.photo_state import PhotoState
 from utils import as_dict
 
 
@@ -16,8 +16,7 @@ class PhotoReportState:
     @staticmethod
     @trace
     async def report_by_photo_id(photo_id: str) -> bool:
-        photo_state = get_photo_state()
-        photo_info = await photo_state.get_photo_by_id(photo_id)
+        photo_info = await PhotoState.get_photo_by_id(photo_id)
 
         if photo_info is None:
             return False  # photo not found
