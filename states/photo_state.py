@@ -12,6 +12,7 @@ from models.photo_info import PhotoInfo
 from utils import as_dict
 
 
+@trace
 def _resize_image(img: Image.Image) -> Image.Image:
     width, height = img.size
 
@@ -24,6 +25,7 @@ def _resize_image(img: Image.Image) -> Image.Image:
     return img.resize((new_width, new_height), Image.LANCZOS)
 
 
+@trace
 def _optimize_image(img: Image.Image, format: str = 'WEBP') -> bytes:
     high, low = 95, 20
     bs_step = 5

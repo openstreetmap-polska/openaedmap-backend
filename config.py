@@ -9,7 +9,7 @@ from pymongo import IndexModel
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.7.0'
+VERSION = '2.7.0.240219'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 

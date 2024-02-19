@@ -7,7 +7,7 @@ import mapbox_vector_tile as mvt
 import numpy as np
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
-from sentry_sdk import start_span
+from sentry_sdk import start_span, trace
 from sentry_sdk.tracing import Span
 from shapely.ops import transform
 
@@ -95,6 +95,7 @@ def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
         return mvt.encode(data, default_options={'extents': MVT_EXTENT})
 
 
+@trace
 async def _get_tile_country(z: int, bbox: BBox) -> bytes:
     countries = await CountryState.get_countries_within(bbox)
     country_count_map: dict[str, str] = {}
@@ -144,6 +145,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
     )
 
 
+@trace
 async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
     group_eps = 9.8 / 2**z if z < TILE_MAX_Z else None
     aeds = await AEDState.get_aeds_within_bbox(bbox.extend(0.5), group_eps)

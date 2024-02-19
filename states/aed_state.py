@@ -1,12 +1,13 @@
 from collections.abc import Iterable, Sequence
-from functools import lru_cache
 from time import time
 from typing import NoReturn
 
 import anyio
+from asyncache import cached
+from cachetools import TTLCache
 from dacite import from_dict
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
-from sentry_sdk import start_span, trace
+from sentry_sdk import start_span, start_transaction, trace
 from sentry_sdk.tracing import Span
 from shapely.geometry import mapping
 from sklearn.cluster import Birch
@@ -26,6 +27,7 @@ from utils import as_dict, retry_exponential
 _AED_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
 
+@trace
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('aed')
     if doc is None or doc.get('version', 1) < 2:
@@ -39,10 +41,7 @@ async def _should_update_db() -> tuple[bool, float]:
     return False, update_timestamp
 
 
-def _is_defibrillator(tags: dict[str, str]) -> bool:
-    return tags.get('emergency') == 'defibrillator'
-
-
+@trace
 async def _assign_country_codes(aeds: Sequence[AED]) -> None:
     from states.country_state import CountryState
 
@@ -83,6 +82,10 @@ async def _assign_country_codes(aeds: Sequence[AED]) -> None:
         await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
 
 
+def _is_defibrillator(tags: dict[str, str]) -> bool:
+    return tags.get('emergency') == 'defibrillator'
+
+
 def _process_overpass_node(node: dict) -> AED:
     tags = node.get('tags', {})
     is_valid = _is_defibrillator(tags)
@@ -96,6 +99,7 @@ def _process_overpass_node(node: dict) -> AED:
     )
 
 
+@trace
 async def _update_db_snapshot() -> None:
     print('🩺 Updating aed database (overpass)...')
     elements, data_timestamp = await query_overpass(_AED_QUERY, timeout=3600, must_return=True)
@@ -147,6 +151,7 @@ def _process_action(action: dict) -> Iterable[AED | str]:
         raise NotImplementedError(f'Unknown action type: {action["@type"]}')
 
 
+@trace
 async def _update_db_diffs(last_update: float) -> None:
     print('🩺 Updating aed database (diff)...')
     actions, data_timestamp = await get_planet_diffs(last_update)
@@ -181,6 +186,7 @@ async def _update_db_diffs(last_update: float) -> None:
 
 
 @retry_exponential(None, start=4)
+@trace
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:
@@ -196,7 +202,6 @@ async def _update_db() -> None:
 
 class AEDState:
     @staticmethod
-    @trace
     async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
         if (await _should_update_db())[1] > 0:
             task_status.started()
@@ -205,7 +210,8 @@ class AEDState:
             started = False
 
         while True:
-            await _update_db()
+            with start_transaction(op='update_db', name=AEDState.update_db_task.__qualname__):
+                await _update_db()
             if not started:
                 task_status.started()
                 started = True
@@ -216,8 +222,8 @@ class AEDState:
     async def update_country_codes(cls) -> None:
         await _assign_country_codes(await cls.get_all_aeds())
 
-    @lru_cache(maxsize=1024)
     @staticmethod
+    @cached(TTLCache(maxsize=1024, ttl=3600))
     @trace
     async def count_aeds_by_country_code(country_code: str) -> int:
         return await AED_COLLECTION.count_documents({'country_codes': country_code})

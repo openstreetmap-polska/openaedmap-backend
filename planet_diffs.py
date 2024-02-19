@@ -31,6 +31,7 @@ def _format_actions(xml: str) -> str:
 
 
 @retry_exponential(AED_REBUILD_THRESHOLD)
+@trace
 async def _get_state(http: AsyncClient, sequence_number: int | None) -> tuple[int, float]:
     if sequence_number is None:
         r = await http.get('state.txt')

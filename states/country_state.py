@@ -4,7 +4,7 @@ from typing import NoReturn
 
 import anyio
 from dacite import from_dict
-from sentry_sdk import trace
+from sentry_sdk import start_transaction, trace
 from shapely.geometry import Point, mapping, shape
 
 from config import COUNTRY_COLLECTION, COUNTRY_UPDATE_DELAY
@@ -55,6 +55,7 @@ def _get_names(tags: dict[str, str]) -> dict[str, str]:
     return names
 
 
+@trace
 async def _should_update_db() -> tuple[bool, float]:
     doc = await get_state_doc('country')
     if doc is None:
@@ -69,6 +70,7 @@ async def _should_update_db() -> tuple[bool, float]:
 
 
 @retry_exponential(None, start=4)
+@trace
 async def _update_db() -> None:
     update_required, update_timestamp = await _should_update_db()
     if not update_required:
@@ -115,7 +117,6 @@ async def _update_db() -> None:
 
 class CountryState:
     @staticmethod
-    @trace
     async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
         if (await _should_update_db())[1] > 0:
             task_status.started()
@@ -124,7 +125,8 @@ class CountryState:
             started = False
 
         while True:
-            await _update_db()
+            with start_transaction(op='update_db', name=CountryState.update_db_task.__qualname__, sampled=True):
+                await _update_db()
             if not started:
                 task_status.started()
                 started = True
