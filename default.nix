@@ -32,6 +32,7 @@ with pkgs; dockerTools.buildLayeredImage {
     cp -r "${./.}"/middlewares .
     cp -r "${./.}"/models .
     cp -r "${./.}"/states .
+    cp -r "${./.}"/validators .
   '';
 
   config = {
