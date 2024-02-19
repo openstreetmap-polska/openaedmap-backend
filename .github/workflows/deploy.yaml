@@ -29,6 +29,11 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('shell.nix') }}
 
+      - name: Install Nix channels
+        run: |
+          nix-channel --add https://nixos.org/channels/nixpkgs-23.11-darwin nixpkgs
+          nix-channel --update
+
       - name: Cache Python packages
         uses: actions/cache@v4
         with:
