@@ -42,8 +42,8 @@ def _tile_to_point(z: int, x: int, y: int) -> Point:
 
 
 def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
-    p1 = _tile_to_point(z, x, y)
-    p2 = _tile_to_point(z, x + 1, y + 1)
+    p1 = _tile_to_point(z, x, y + 1)
+    p2 = _tile_to_point(z, x + 1, y)
     return BBox(p1, p2)
 
 
