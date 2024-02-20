@@ -64,15 +64,6 @@ async def get_tile(
     return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')
 
 
-def _mvt_rescale(x: float, y: float, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple[int, int]:
-    x_mvt, y_mvt = MVT_TRANSFORMER.transform(np.array(x), np.array(y))
-
-    # subtract minimum boundary and scale to MVT extent
-    x_scaled = np.rint((x_mvt - x_min) / x_span * MVT_EXTENT).astype(int)
-    y_scaled = np.rint((y_mvt - y_min) / y_span * MVT_EXTENT).astype(int)
-    return x_scaled, y_scaled
-
-
 def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
     with start_span(description='Transforming MVT geometry'):
         bbox_coords = np.asarray((get_coordinates(bbox.p1)[0], get_coordinates(bbox.p2)[0]))
