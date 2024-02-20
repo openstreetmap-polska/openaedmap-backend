@@ -205,7 +205,7 @@ class AEDState:
             started = False
 
         while True:
-            with start_transaction(op='update_db', name=AEDState.update_db_task.__qualname__):
+            with start_transaction(op='db.update', name=AEDState.update_db_task.__qualname__):
                 await _update_db()
             if not started:
                 task_status.started()
@@ -269,7 +269,7 @@ class AEDState:
             fit_positions = positions
 
         with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
-            model = Birch(threshold=group_eps, n_clusters=None, copy=False)
+            model = Birch(threshold=group_eps, n_clusters=None, compute_labels=False, copy=False)
             model.fit(fit_positions)
 
         with start_span(description=f'Processing {len(aeds)} samples'):
