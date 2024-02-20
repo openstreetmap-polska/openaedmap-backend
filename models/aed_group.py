@@ -21,14 +21,18 @@ class AEDGroup(NamedTuple):
             'no': 5,
         }
 
-        min_access = '', float('inf')
+        min_access = ''
+        min_tier = float('inf')
 
         for access in accesses:
-            if access == 'yes':
-                return 'yes'  # early stopping
+            tier = tiered.get(access)
 
-            tier = tiered.get(access, float('inf'))
-            if tier < min_access[1]:
-                min_access = access, tier
+            if (tier is not None) and (tier < min_tier):
+                min_access = access
+                min_tier = tier
 
-        return min_access[0]
+                # early stopping
+                if min_tier == 0:
+                    break
+
+        return min_access
