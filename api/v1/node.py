@@ -4,7 +4,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
 from pytz import timezone
-from shapely import Point
+from shapely import get_coordinates
 from tzfpy import get_tz
 
 from middlewares.cache_middleware import configure_cache
@@ -17,8 +17,8 @@ router = APIRouter()
 photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
 
 
-def _get_timezone(position: Point) -> tuple[str | None, str | None]:
-    timezone_name: str | None = get_tz(position.x, position.y)
+def _get_timezone(x: float, y: float) -> tuple[str | None, str | None]:
+    timezone_name: str | None = get_tz(x, y)
     timezone_offset = None
 
     if timezone_name:
@@ -78,9 +78,11 @@ async def get_node(node_id: int):
     if aed is None:
         raise HTTPException(404, f'Node {node_id} not found')
 
+    x, y = get_coordinates(aed.position)[0]
+
     photo_dict = await _get_image_data(aed.tags)
 
-    timezone_name, timezone_offset = _get_timezone(aed.position)
+    timezone_name, timezone_offset = _get_timezone(x, y)
     timezone_dict = {
         '@timezone_name': timezone_name,
         '@timezone_offset': timezone_offset,
@@ -97,8 +99,8 @@ async def get_node(node_id: int):
                 **timezone_dict,
                 'type': 'node',
                 'id': aed.id,
-                'lat': aed.position.y,
-                'lon': aed.position.x,
+                'lat': y,
+                'lon': x,
                 'tags': aed.tags,
                 'version': aed.version,
             }

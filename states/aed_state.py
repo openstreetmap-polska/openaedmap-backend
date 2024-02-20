@@ -8,7 +8,7 @@ from asyncache import cached
 from cachetools import TTLCache
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from sentry_sdk import start_span, start_transaction, trace
-from shapely import Point, points
+from shapely import Point, get_coordinates, points
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
@@ -239,9 +239,11 @@ class AEDState:
     async def get_all_aeds(filter: dict | None = None) -> Sequence[AED]:
         cursor = AED_COLLECTION.find(filter, projection={'_id': False})
         docs = await cursor.to_list(None)
+        if not docs:
+            return ()
+
         coords = tuple(doc['position']['coordinates'] for doc in docs)
         positions = points(coords)
-
         result = [None] * len(docs)
 
         for i, doc, position in zip(range(len(docs)), docs, positions, strict=True):
@@ -262,7 +264,7 @@ class AEDState:
         if len(aeds) <= 1 or group_eps is None:
             return aeds
 
-        positions = tuple((aed.position.x, aed.position.y) for aed in aeds)
+        positions = tuple(get_coordinates(aed.position)[0] for aed in aeds)
 
         # deterministic sampling
         max_fit_samples = 7000

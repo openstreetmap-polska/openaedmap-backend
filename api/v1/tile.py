@@ -66,10 +66,6 @@ async def get_tile(
 
 def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
     with start_span(description='Transforming MVT geometry'):
-        bbox_coords = np.asarray((get_coordinates(bbox.p1)[0], get_coordinates(bbox.p2)[0]))
-        bbox_coords = np.asarray(MVT_TRANSFORMER.transform(bbox_coords[:, 0], bbox_coords[:, 1])).T
-        span = bbox_coords[1] - bbox_coords[0]
-
         coords_range = []
         coords = []
 
@@ -80,17 +76,22 @@ def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
                 coords_range.append((coords_len, coords_len + len(feature_coords)))
                 coords.extend(feature_coords)
 
-        coords = np.asarray(coords)
-        coords = np.asarray(MVT_TRANSFORMER.transform(coords[:, 0], coords[:, 1])).T
-        coords = np.rint((coords - bbox_coords[0]) / span * MVT_EXTENT).astype(int)
+        if coords:
+            bbox_coords = np.asarray((get_coordinates(bbox.p1)[0], get_coordinates(bbox.p2)[0]))
+            bbox_coords = np.asarray(MVT_TRANSFORMER.transform(bbox_coords[:, 0], bbox_coords[:, 1])).T
+            span = bbox_coords[1] - bbox_coords[0]
 
-        i = 0
-        for layer in layers:
-            for feature in layer['features']:
-                feature_coords_range = coords_range[i]
-                feature_coords = coords[feature_coords_range[0] : feature_coords_range[1]]
-                feature['geometry'] = set_coordinates(feature['geometry'], feature_coords)
-                i += 1
+            coords = np.asarray(coords)
+            coords = np.asarray(MVT_TRANSFORMER.transform(coords[:, 0], coords[:, 1])).T
+            coords = np.rint((coords - bbox_coords[0]) / span * MVT_EXTENT).astype(int)
+
+            i = 0
+            for layer in layers:
+                for feature in layer['features']:
+                    feature_coords_range = coords_range[i]
+                    feature_coords = coords[feature_coords_range[0] : feature_coords_range[1]]
+                    feature['geometry'] = set_coordinates(feature['geometry'], feature_coords)
+                    i += 1
 
     with start_span(description='Encoding MVT'):
         return mvt.encode(
