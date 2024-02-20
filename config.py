@@ -12,7 +12,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
 
 NAME = 'openaedmap-backend'
-VERSION = '2.7.3'
+VERSION = '2.7.4'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 

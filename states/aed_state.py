@@ -269,7 +269,7 @@ class AEDState:
             fit_positions = positions
 
         with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
-            model = Birch(threshold=group_eps, n_clusters=None, copy=False)
+            model = Birch(threshold=group_eps, n_clusters=None, compute_labels=False, copy=False)
             model.fit(fit_positions)
 
         with start_span(description=f'Processing {len(aeds)} samples'):
