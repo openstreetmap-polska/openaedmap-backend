@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from itertools import chain
 from math import atan, degrees, pi, sinh
 from typing import Annotated
 
@@ -8,8 +7,7 @@ import numpy as np
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span, trace
-from shapely import Point
-from shapely.ops import transform
+from shapely import get_coordinates, points, set_coordinates
 
 from config import (
     DEFAULT_CACHE_MAX_AGE,
@@ -33,17 +31,18 @@ from utils import abbreviate
 router = APIRouter()
 
 
-def _tile_to_point(z: int, x: int, y: int) -> Point:
+def _tile_to_point(z: int, x: int, y: int) -> tuple[float, float]:
     n = 2**z
     lon_deg = x / n * 360.0 - 180.0
     lat_rad = atan(sinh(pi * (1 - 2 * y / n)))
     lat_deg = degrees(lat_rad)
-    return Point(lon_deg, lat_deg)
+    return lon_deg, lat_deg
 
 
 def _tile_to_bbox(z: int, x: int, y: int) -> BBox:
-    p1 = _tile_to_point(z, x, y + 1)
-    p2 = _tile_to_point(z, x + 1, y)
+    p1_coords = _tile_to_point(z, x, y + 1)
+    p2_coords = _tile_to_point(z, x + 1, y)
+    p1, p2 = points((p1_coords, p2_coords))
     return BBox(p1, p2)
 
 
@@ -65,31 +64,38 @@ async def get_tile(
     return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')
 
 
-def _mvt_rescale(x: float, y: float, x_min: float, y_min: float, x_span: float, y_span: float) -> tuple[int, int]:
-    x_mvt, y_mvt = MVT_TRANSFORMER.transform(np.array(x), np.array(y))
-
-    # subtract minimum boundary and scale to MVT extent
-    x_scaled = np.rint((x_mvt - x_min) / x_span * MVT_EXTENT).astype(int)
-    y_scaled = np.rint((y_mvt - y_min) / y_span * MVT_EXTENT).astype(int)
-    return x_scaled, y_scaled
-
-
-def _mvt_encode(bbox: BBox, data: Sequence[dict]) -> bytes:
-    x_min, y_min = MVT_TRANSFORMER.transform(bbox.p1.x, bbox.p1.y)
-    x_max, y_max = MVT_TRANSFORMER.transform(bbox.p2.x, bbox.p2.y)
-    x_span = x_max - x_min
-    y_span = y_max - y_min
-
+def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
     with start_span(description='Transforming MVT geometry'):
-        for feature in chain.from_iterable(d['features'] for d in data):
-            feature['geometry'] = transform(
-                func=lambda x, y: _mvt_rescale(x, y, x_min, y_min, x_span, y_span),
-                geom=feature['geometry'],
-            )
+        coords_range = []
+        coords = []
+
+        for layer in layers:
+            for feature in layer['features']:
+                feature_coords = get_coordinates(feature['geometry'])
+                coords_len = len(coords)
+                coords_range.append((coords_len, coords_len + len(feature_coords)))
+                coords.extend(feature_coords)
+
+        if coords:
+            bbox_coords = np.asarray((get_coordinates(bbox.p1)[0], get_coordinates(bbox.p2)[0]))
+            bbox_coords = np.asarray(MVT_TRANSFORMER.transform(bbox_coords[:, 0], bbox_coords[:, 1])).T
+            span = bbox_coords[1] - bbox_coords[0]
+
+            coords = np.asarray(coords)
+            coords = np.asarray(MVT_TRANSFORMER.transform(coords[:, 0], coords[:, 1])).T
+            coords = np.rint((coords - bbox_coords[0]) / span * MVT_EXTENT).astype(int)
+
+            i = 0
+            for layer in layers:
+                for feature in layer['features']:
+                    feature_coords_range = coords_range[i]
+                    feature_coords = coords[feature_coords_range[0] : feature_coords_range[1]]
+                    feature['geometry'] = set_coordinates(feature['geometry'], feature_coords)
+                    i += 1
 
     with start_span(description='Encoding MVT'):
         return mvt.encode(
-            data,
+            layers,
             default_options={
                 'extents': MVT_EXTENT,
                 'check_winding_order': False,

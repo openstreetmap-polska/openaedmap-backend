@@ -8,7 +8,7 @@ from asyncache import cached
 from cachetools import TTLCache
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
 from sentry_sdk import start_span, start_transaction, trace
-from shapely import Point
+from shapely import Point, get_coordinates, points
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
@@ -238,12 +238,18 @@ class AEDState:
     @trace
     async def get_all_aeds(filter: dict | None = None) -> Sequence[AED]:
         cursor = AED_COLLECTION.find(filter, projection={'_id': False})
-        result = []
+        docs = await cursor.to_list(None)
+        if not docs:
+            return ()
 
-        async for doc in cursor:
-            doc['position'] = geometry_validator(doc['position'])
+        coords = tuple(doc['position']['coordinates'] for doc in docs)
+        positions = points(coords)
+        result = [None] * len(docs)
+
+        for i, doc, position in zip(range(len(docs)), docs, positions, strict=True):
+            doc['position'] = position
             aed = AED.model_construct(**doc)
-            result.append(aed)
+            result[i] = aed
 
         return result
 
@@ -258,22 +264,23 @@ class AEDState:
         if len(aeds) <= 1 or group_eps is None:
             return aeds
 
-        positions = tuple((aed.position.x, aed.position.y) for aed in aeds)
+        positions = tuple(get_coordinates(aed.position)[0] for aed in aeds)
 
         # deterministic sampling
         max_fit_samples = 7000
         if len(positions) > max_fit_samples:
             indices = np.linspace(0, len(positions), max_fit_samples, endpoint=False, dtype=int)
-            fit_positions = np.array(positions)[indices]
+            fit_positions = np.asarray(positions)[indices]
         else:
             fit_positions = positions
 
         with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
             model = Birch(threshold=group_eps, n_clusters=None, compute_labels=False, copy=False)
             model.fit(fit_positions)
+            center_points = points(model.subcluster_centers_)
 
         with start_span(description=f'Processing {len(aeds)} samples'):
-            cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(model.subcluster_centers_)))
+            cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(center_points)))
             result: list[AED | AEDGroup] = []
 
             with start_span(description='Clustering'):
@@ -282,7 +289,7 @@ class AEDState:
             for aed, cluster in zip(aeds, clusters, strict=True):
                 cluster_groups[cluster].append(aed)
 
-            for group, center in zip(cluster_groups, model.subcluster_centers_, strict=True):
+            for group, center_point in zip(cluster_groups, center_points, strict=True):
                 if len(group) == 0:
                     continue
                 if len(group) == 1:
@@ -291,7 +298,7 @@ class AEDState:
 
                 result.append(
                     AEDGroup(
-                        position=Point(center[0], center[1]),
+                        position=center_point,
                         count=len(group),
                         access=AEDGroup.decide_access(aed.access for aed in group),
                     )
