@@ -11,6 +11,7 @@ from middlewares.skip_serialization import skip_serialization
 from models.country import Country
 from states.aed_state import AEDState
 from states.country_state import CountryState
+from utils import simple_point_mapping
 
 router = APIRouter(prefix='/countries')
 
@@ -74,7 +75,7 @@ async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length
         'features': [
             {
                 'type': 'Feature',
-                'geometry': mapping(aed.position),
+                'geometry': simple_point_mapping(aed.position),
                 'properties': {
                     '@osm_type': 'node',
                     '@osm_id': aed.id,

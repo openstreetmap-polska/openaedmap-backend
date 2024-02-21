@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import anyio
 import httpx
+from shapely import Point, get_coordinates
 
 from config import USER_AGENT
 
@@ -56,3 +57,8 @@ def abbreviate(num: int) -> str:
 
 def get_wikimedia_commons_url(path: str) -> str:
     return f'https://commons.wikimedia.org/wiki/{path}'
+
+
+def simple_point_mapping(point: Point) -> dict:
+    x, y = get_coordinates(point)[0]
+    return {'type': 'Point', 'coordinates': (x, y)}

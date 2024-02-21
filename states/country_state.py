@@ -13,7 +13,7 @@ from models.country import Country
 from osm_countries import get_osm_countries
 from state_utils import get_state_doc, set_state_doc
 from transaction import Transaction
-from utils import retry_exponential
+from utils import retry_exponential, simple_point_mapping
 from validators.geometry import geometry_validator
 
 
@@ -164,11 +164,9 @@ class CountryState:
             {
                 'geometry': {
                     '$geoIntersects': {
-                        '$geometry': mapping(
-                            bbox_or_pos.to_polygon(nodes_per_edge=8)
-                            if isinstance(bbox_or_pos, BBox)  #
-                            else bbox_or_pos
-                        )
+                        '$geometry': mapping(bbox_or_pos.to_polygon(nodes_per_edge=8))
+                        if isinstance(bbox_or_pos, BBox)
+                        else simple_point_mapping(bbox_or_pos)
                     }
                 }
             }
