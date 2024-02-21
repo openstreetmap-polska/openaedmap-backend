@@ -51,7 +51,7 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
 
 @router.get('/view/{id}.webp')
 @configure_cache(timedelta(days=365), stale=timedelta(days=365))
-async def view(id: str) -> FileResponse:
+async def view(id: str):
     info = await PhotoState.get_photo_by_id(id)
 
     if info is None:
@@ -62,7 +62,7 @@ async def view(id: str) -> FileResponse:
 
 @router.get('/proxy/direct/{url_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_direct(url_encoded: str) -> FileResponse:
+async def proxy_direct(url_encoded: str):
     url = unquote_plus(url_encoded)
     file, content_type = await _fetch_image(url)
     return Response(file, media_type=content_type)
@@ -70,7 +70,7 @@ async def proxy_direct(url_encoded: str) -> FileResponse:
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
 @configure_cache(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_wikimedia_commons(path_encoded: str) -> FileResponse:
+async def proxy_wikimedia_commons(path_encoded: str):
     meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
 
     async with get_http_client() as http:
@@ -145,12 +145,12 @@ async def upload(
 
 
 @router.post('/report')
-async def report(id: Annotated[str, Form()]) -> bool:
+async def report(id: Annotated[str, Form()]):
     return await PhotoReportState.report_by_photo_id(id)
 
 
 @router.get('/report/rss.xml')
-async def report_rss(request: Request) -> Response:
+async def report_rss(request: Request):
     fg = FeedGenerator()
     fg.title('AED Photo Reports')
     fg.description('This feed contains a list of recent AED photo reports')

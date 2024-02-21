@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import ORJSONResponse
 from pytz import timezone
 from shapely import get_coordinates
 from tzfpy import get_tz
@@ -88,21 +89,23 @@ async def get_node(node_id: int):
         '@timezone_offset': timezone_offset,
     }
 
-    return {
-        'version': 0.6,
-        'copyright': 'OpenStreetMap and contributors',
-        'attribution': 'https://www.openstreetmap.org/copyright',
-        'license': 'https://opendatacommons.org/licenses/odbl/1-0/',
-        'elements': [
-            {
-                **photo_dict,
-                **timezone_dict,
-                'type': 'node',
-                'id': aed.id,
-                'lat': y,
-                'lon': x,
-                'tags': aed.tags,
-                'version': aed.version,
-            }
-        ],
-    }
+    return ORJSONResponse(
+        {
+            'version': 0.6,
+            'copyright': 'OpenStreetMap and contributors',
+            'attribution': 'https://www.openstreetmap.org/copyright',
+            'license': 'https://opendatacommons.org/licenses/odbl/1-0/',
+            'elements': [
+                {
+                    **photo_dict,
+                    **timezone_dict,
+                    'type': 'node',
+                    'id': aed.id,
+                    'lat': y,
+                    'lon': x,
+                    'tags': aed.tags,
+                    'version': aed.version,
+                }
+            ],
+        }
+    )

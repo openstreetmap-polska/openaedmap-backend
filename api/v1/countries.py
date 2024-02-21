@@ -2,7 +2,8 @@ from datetime import timedelta
 from typing import Annotated
 
 from anyio import create_task_group
-from fastapi import APIRouter, Path, Response
+from fastapi import APIRouter, Path
+from fastapi.responses import ORJSONResponse
 from sentry_sdk import start_span
 from shapely.geometry import mapping
 
@@ -35,50 +36,54 @@ async def get_names(language: str | None = None):
             return {language: name}
         return names
 
-    return [
-        {
-            'country_code': country.code,
-            'country_names': limit_country_names(country.names),
-            'feature_count': country_count_map[country.name],
-            'data_path': f'/api/v1/countries/{country.code}.geojson',
-        }
-        for country in countries
-    ] + [
-        {
-            'country_code': 'WORLD',
-            'country_names': {'default': 'World'},
-            'feature_count': sum(country_count_map.values()),
-            'data_path': '/api/v1/countries/WORLD.geojson',
-        }
-    ]
+    return ORJSONResponse(
+        [
+            {
+                'country_code': country.code,
+                'country_names': limit_country_names(country.names),
+                'feature_count': country_count_map[country.name],
+                'data_path': f'/api/v1/countries/{country.code}.geojson',
+            }
+            for country in countries
+        ]
+        + [
+            {
+                'country_code': 'WORLD',
+                'country_names': {'default': 'World'},
+                'feature_count': sum(country_count_map.values()),
+                'data_path': '/api/v1/countries/WORLD.geojson',
+            }
+        ]
+    )
 
 
 @router.get('/{country_code}.geojson')
 @configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
-async def get_geojson(
-    response: Response,
-    country_code: Annotated[str, Path(min_length=2, max_length=5)],
-):
+async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length=5)]):
     if country_code == 'WORLD':
         aeds = await AEDState.get_all_aeds()
     else:
         aeds = await AEDState.get_aeds_by_country_code(country_code)
 
-    response.headers['Content-Disposition'] = 'attachment'
-    response.headers['Content-Type'] = 'application/geo+json; charset=utf-8'
-    return {
-        'type': 'FeatureCollection',
-        'features': [
-            {
-                'type': 'Feature',
-                'geometry': mapping(aed.position),
-                'properties': {
-                    '@osm_type': 'node',
-                    '@osm_id': aed.id,
-                    '@osm_version': aed.version,
-                    **aed.tags,
-                },
-            }
-            for aed in aeds
-        ],
-    }
+    return ORJSONResponse(
+        {
+            'type': 'FeatureCollection',
+            'features': [
+                {
+                    'type': 'Feature',
+                    'geometry': mapping(aed.position),
+                    'properties': {
+                        '@osm_type': 'node',
+                        '@osm_id': aed.id,
+                        '@osm_version': aed.version,
+                        **aed.tags,
+                    },
+                }
+                for aed in aeds
+            ],
+        },
+        headers={
+            'Content-Disposition': 'attachment',
+            'Content-Type': 'application/geo+json; charset=utf-8',
+        },
+    )
