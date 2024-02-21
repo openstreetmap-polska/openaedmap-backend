@@ -8,6 +8,7 @@ from shapely import get_coordinates
 from tzfpy import get_tz
 
 from middlewares.cache_middleware import configure_cache
+from middlewares.skip_serialization import skip_serialization
 from states.aed_state import AEDState
 from states.photo_state import PhotoState
 from utils import get_wikimedia_commons_url
@@ -72,6 +73,7 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
 
 @router.get('/node/{node_id}')
 @configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
+@skip_serialization()
 async def get_node(node_id: int):
     aed = await AEDState.get_aed_by_id(node_id)
 
