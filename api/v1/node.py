@@ -3,12 +3,12 @@ from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import ORJSONResponse
 from pytz import timezone
 from shapely import get_coordinates
 from tzfpy import get_tz
 
 from middlewares.cache_middleware import configure_cache
+from middlewares.skip_serialization import skip_serialization
 from states.aed_state import AEDState
 from states.photo_state import PhotoState
 from utils import get_wikimedia_commons_url
@@ -73,6 +73,7 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
 
 @router.get('/node/{node_id}')
 @configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
+@skip_serialization()
 async def get_node(node_id: int):
     aed = await AEDState.get_aed_by_id(node_id)
 
@@ -89,23 +90,21 @@ async def get_node(node_id: int):
         '@timezone_offset': timezone_offset,
     }
 
-    return ORJSONResponse(
-        {
-            'version': 0.6,
-            'copyright': 'OpenStreetMap and contributors',
-            'attribution': 'https://www.openstreetmap.org/copyright',
-            'license': 'https://opendatacommons.org/licenses/odbl/1-0/',
-            'elements': [
-                {
-                    **photo_dict,
-                    **timezone_dict,
-                    'type': 'node',
-                    'id': aed.id,
-                    'lat': y,
-                    'lon': x,
-                    'tags': aed.tags,
-                    'version': aed.version,
-                }
-            ],
-        }
-    )
+    return {
+        'version': 0.6,
+        'copyright': 'OpenStreetMap and contributors',
+        'attribution': 'https://www.openstreetmap.org/copyright',
+        'license': 'https://opendatacommons.org/licenses/odbl/1-0/',
+        'elements': [
+            {
+                **photo_dict,
+                **timezone_dict,
+                'type': 'node',
+                'id': aed.id,
+                'lat': y,
+                'lon': x,
+                'tags': aed.tags,
+                'version': aed.version,
+            }
+        ],
+    }
