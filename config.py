@@ -8,11 +8,10 @@ from motor.core import AgnosticDatabase
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import IndexModel
 from pyproj import Transformer
-from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
 
 NAME = 'openaedmap-backend'
-VERSION = '2.8.0'
+VERSION = '2.8.1'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -29,7 +28,6 @@ if ENVIRONMENT:
         trace_propagation_targets=None,
         profiles_sample_rate=0.2,
         integrations=[
-            AsyncioIntegration(),
             PyMongoIntegration(),
         ],
     )
