@@ -80,7 +80,7 @@ async def get_node(node_id: int):
     if aed is None:
         raise HTTPException(404, f'Node {node_id} not found')
 
-    x, y = get_coordinates(aed.position)[0]
+    x, y = get_coordinates(aed.position)[0].tolist()
 
     photo_dict = await _get_image_data(aed.tags)
 

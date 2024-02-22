@@ -44,7 +44,7 @@ async def _should_update_db() -> tuple[bool, float]:
 
 
 @trace
-async def _get_country_code_updates_by_aeds(aeds: Sequence[AED]) -> Sequence[UpdateOne]:
+async def _get_country_code_updates_by_aeds(aeds: Sequence[AED]) -> list[UpdateOne]:
     from states.country_state import CountryState
 
     bulk_write_args = []
@@ -69,7 +69,7 @@ async def _get_country_code_updates_by_aeds(aeds: Sequence[AED]) -> Sequence[Upd
 
 
 @trace
-async def _get_country_code_updates_by_countries(aeds: Sequence[AED]) -> Sequence[UpdateOne]:
+async def _get_country_code_updates_by_countries(aeds: Sequence[AED]) -> list[UpdateOne]:
     from states.country_state import CountryState
 
     aed_codes_map = {aed.id: set() for aed in aeds}
@@ -93,13 +93,13 @@ async def _get_country_code_updates_by_countries(aeds: Sequence[AED]) -> Sequenc
 
         print(f'📫 Processing {len(countries)} countries in parallel')
 
-    return tuple(
+    return [
         UpdateOne(
             {'id': aed.id},
             {'$set': {'country_codes': tuple(aed_codes_map[aed.id])}},
         )
         for aed in aeds
-    )
+    ]
 
 
 @trace
@@ -264,6 +264,7 @@ class AEDState:
         if doc is None:
             return None
 
+        doc['id'] = int(doc['id'])
         doc['position'] = geometry_validator(doc['position'])
         aed = AED.model_construct(**doc)
         return aed
@@ -281,6 +282,7 @@ class AEDState:
         result = [None] * len(docs)
 
         for i, doc, position in zip(range(len(docs)), docs, positions, strict=True):
+            doc['id'] = int(doc['id'])
             doc['position'] = position
             aed = AED.model_construct(**doc)
             result[i] = aed
