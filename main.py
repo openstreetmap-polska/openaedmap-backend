@@ -9,10 +9,10 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE, startup_setup
+from json_response import CustomJSONResponse
 from middlewares.cache_middleware import CacheMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
-from orjson_response import CustomORJSONResponse
 from states.aed_state import AEDState
 from states.country_state import CountryState
 from states.worker_state import WorkerState, WorkerStateEnum
@@ -39,7 +39,7 @@ async def lifespan(_):
         yield
 
 
-app = FastAPI(lifespan=lifespan, default_response_class=CustomORJSONResponse)
+app = FastAPI(lifespan=lifespan, default_response_class=CustomJSONResponse)
 app.add_middleware(ProfilerMiddleware)
 app.add_middleware(VersionMiddleware)
 app.add_middleware(

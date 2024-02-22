@@ -1,13 +1,16 @@
 from collections.abc import Sequence
 
-import brotlicffi as brotli
-import orjson
+from msgspec.json import Decoder
 from sentry_sdk import trace
 from shapely.geometry import shape
+from zstandard import ZstdDecompressor
 
 from config import COUNTRIES_GEOJSON_URL
 from models.osm_country import OSMCountry
 from utils import get_http_client
+
+_zstd_decompress = ZstdDecompressor().decompress
+_json_decode = Decoder().decode
 
 
 @trace
@@ -17,8 +20,8 @@ async def get_osm_countries() -> Sequence[OSMCountry]:
         r.raise_for_status()
 
     buffer = r.read()
-    buffer = brotli.decompress(buffer)
-    data = orjson.loads(buffer)
+    buffer = _zstd_decompress(buffer)
+    data: dict = _json_decode(buffer)
 
     result = []
 
