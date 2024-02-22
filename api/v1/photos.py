@@ -4,11 +4,11 @@ from typing import Annotated
 from urllib.parse import unquote_plus
 
 import magic
-import orjson
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
+from msgspec.json import Decoder
 
 from config import IMAGE_CONTENT_TYPES, REMOTE_IMAGE_MAX_FILE_SIZE
 from middlewares.cache_middleware import configure_cache
@@ -18,6 +18,8 @@ from states.aed_state import AEDState
 from states.photo_report_state import PhotoReportState
 from states.photo_state import PhotoState
 from utils import get_http_client, get_wikimedia_commons_url
+
+_json_decode = Decoder().decode
 
 router = APIRouter(prefix='/photos')
 
@@ -108,7 +110,7 @@ async def upload(
         raise HTTPException(400, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
     try:
-        oauth2_credentials_ = orjson.loads(oauth2_credentials)
+        oauth2_credentials_: dict = _json_decode(oauth2_credentials)
     except Exception as e:
         raise HTTPException(400, 'OAuth2 credentials must be a JSON object') from e
 

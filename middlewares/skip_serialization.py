@@ -3,7 +3,7 @@ from collections.abc import Mapping
 
 from fastapi import Response
 
-from orjson_response import CustomORJSONResponse
+from json_response import CustomJSONResponse
 
 
 def skip_serialization(headers: Mapping[str, str] | None = None):
@@ -13,7 +13,7 @@ def skip_serialization(headers: Mapping[str, str] | None = None):
             raw_response = await func(*args, **kwargs)
             if isinstance(raw_response, Response):
                 return raw_response
-            return CustomORJSONResponse(raw_response, headers=headers)
+            return CustomJSONResponse(raw_response, headers=headers)
 
         return wrapper
 

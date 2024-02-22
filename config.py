@@ -12,7 +12,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
 
 NAME = 'openaedmap-backend'
-VERSION = '2.7.6'
+VERSION = '2.8.0'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -37,7 +37,7 @@ if ENVIRONMENT:
 OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 REPLICATION_URL = 'https://planet.openstreetmap.org/replication/minute/'
-COUNTRIES_GEOJSON_URL = 'https://osm-countries-geojson.monicz.dev/osm-countries-0-01.geojson.br'
+COUNTRIES_GEOJSON_URL = 'https://osm-countries-geojson.monicz.dev/osm-countries-0-01.geojson.zst'
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)

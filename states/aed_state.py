@@ -4,6 +4,7 @@ from typing import NoReturn
 
 import anyio
 import numpy as np
+from anyio import create_task_group
 from asyncache import cached
 from cachetools import TTLCache
 from pymongo import DeleteOne, ReplaceOne, UpdateOne
@@ -12,12 +13,12 @@ from shapely import Point, get_coordinates, points
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
-from tqdm import tqdm
 
 from config import AED_COLLECTION, AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
 from models.aed import AED
 from models.aed_group import AEDGroup
 from models.bbox import BBox
+from models.country import Country
 from overpass import query_overpass
 from planet_diffs import get_planet_diffs
 from state_utils import get_state_doc, set_state_doc
@@ -43,37 +44,70 @@ async def _should_update_db() -> tuple[bool, float]:
 
 
 @trace
-async def _assign_country_codes(aeds: Sequence[AED]) -> None:
+async def _get_country_code_updates_by_aeds(aeds: Sequence[AED]) -> Sequence[UpdateOne]:
     from states.country_state import CountryState
 
-    if len(aeds) < 100:
-        bulk_write_args = []
-        for aed in aeds:
-            countries = await CountryState.get_countries_within(aed.position)
-            country_codes = tuple({c.code for c in countries})
-            bulk_write_args.append(UpdateOne({'id': aed.id}, {'$set': {'country_codes': country_codes}}))
-    else:
-        countries = await CountryState.get_all_countries()
-        id_codes_map = {aed.id: set() for aed in aeds}
+    bulk_write_args = []
 
-        for country in tqdm(countries, desc='📫 Iterating over countries'):
-            async for doc in AED_COLLECTION.find(
-                {
-                    '$and': [
-                        {'id': {'$in': tuple(id_codes_map)}},
-                        {'position': {'$geoIntersects': {'$geometry': mapping(country.geometry)}}},
-                    ]
-                }
-            ):
-                id_codes_map[doc['id']].add(country.code)
-
-        bulk_write_args = [
+    async def task(aed: AED):
+        countries = await CountryState.get_countries_within(aed.position)
+        country_codes = tuple({c.code for c in countries})
+        bulk_write_args.append(
             UpdateOne(
                 {'id': aed.id},
-                {'$set': {'country_codes': tuple(id_codes_map[aed.id])}},
+                {'$set': {'country_codes': country_codes}},
             )
-            for aed in aeds
-        ]
+        )
+
+    async with create_task_group() as tg:
+        for aed in aeds:
+            tg.start_soon(task, aed)
+
+        print(f'📫 Processing {len(aeds)} AEDs in parallel')
+
+    return bulk_write_args
+
+
+@trace
+async def _get_country_code_updates_by_countries(aeds: Sequence[AED]) -> Sequence[UpdateOne]:
+    from states.country_state import CountryState
+
+    aed_codes_map = {aed.id: set() for aed in aeds}
+    aed_ids = tuple(aed_codes_map)
+    countries = await CountryState.get_all_countries()
+
+    async def task(country: Country):
+        async for doc in AED_COLLECTION.find(
+            {
+                '$and': [
+                    {'id': {'$in': aed_ids}},
+                    {'position': {'$geoIntersects': {'$geometry': mapping(country.geometry)}}},
+                ]
+            }
+        ):
+            aed_codes_map[doc['id']].add(country.code)
+
+    async with create_task_group() as tg:
+        for country in countries:
+            tg.start_soon(task, country)
+
+        print(f'📫 Processing {len(countries)} countries in parallel')
+
+    return tuple(
+        UpdateOne(
+            {'id': aed.id},
+            {'$set': {'country_codes': tuple(aed_codes_map[aed.id])}},
+        )
+        for aed in aeds
+    )
+
+
+@trace
+async def _assign_country_codes(aeds: Sequence[AED]) -> None:
+    if len(aeds) < 200:
+        bulk_write_args = await _get_country_code_updates_by_aeds(aeds)
+    else:
+        bulk_write_args = await _get_country_code_updates_by_countries(aeds)
 
     if bulk_write_args:
         await AED_COLLECTION.bulk_write(bulk_write_args, ordered=False)
