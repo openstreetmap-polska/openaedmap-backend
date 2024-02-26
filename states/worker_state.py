@@ -4,14 +4,14 @@ from datetime import timedelta
 from enum import Enum
 
 import anyio
-import psutil
+from anyio import Path
 
 from config import NAME
 from utils import retry_exponential
 
-_PID_PATH = anyio.Path(f'/tmp/{NAME}-worker.pid')
-_STATE_PATH = anyio.Path(f'/tmp/{NAME}-worker.state')
-_LOCK_PATH = anyio.Path(f'/tmp/{NAME}-worker.lock')
+_PID_PATH = Path(f'/tmp/{NAME}-worker.pid')
+_STATE_PATH = Path(f'/tmp/{NAME}-worker.state')
+_LOCK_PATH = Path(f'/tmp/{NAME}-worker.lock')
 
 
 class WorkerStateEnum(str, Enum):
@@ -35,17 +35,12 @@ class WorkerState:
             self.is_primary = False
 
             while True:
-                if not await _PID_PATH.is_file() or not await _STATE_PATH.is_file():
-                    await anyio.sleep(0.1)
-                    continue
+                if await _PID_PATH.is_file() and await _STATE_PATH.is_file():
+                    pid = await _PID_PATH.read_text()
+                    if pid and await Path(f'/proc/{pid}').is_dir():
+                        break
 
-                pid = await _PID_PATH.read_text()
-
-                if not pid or not psutil.pid_exists(int(pid)):
-                    await anyio.sleep(0.1)
-                    continue
-
-                break
+                await anyio.sleep(0.1)
 
     async def set_state(self, state: WorkerStateEnum) -> None:
         assert self.is_primary
