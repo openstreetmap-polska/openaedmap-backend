@@ -60,5 +60,4 @@ def get_wikimedia_commons_url(path: str) -> str:
 
 
 def simple_point_mapping(point: Point) -> dict:
-    x, y = get_coordinates(point)[0].tolist()
-    return {'type': 'Point', 'coordinates': (x, y)}
+    return {'type': 'Point', 'coordinates': get_coordinates(point)[0].tolist()}
