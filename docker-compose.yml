@@ -4,7 +4,16 @@ services:
   db:
     image: docker.io/library/mongo
     restart: unless-stopped
-    command: ["mongod", "--bind_ip_all", "--setParameter", "transactionLifetimeLimitSeconds=90", "--replSet", "rs0"]
+    command: [
+        "mongod",
+        "--bind_ip_all",
+        "--setParameter",
+        "transactionLifetimeLimitSeconds=90",
+        "--wiredTigerCacheSizeGB",
+        "0.5", # 512MB
+        "--replSet",
+        "rs0",
+      ]
 
     volumes:
       - ./data/db:/data/db
