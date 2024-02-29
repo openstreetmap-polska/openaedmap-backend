@@ -11,7 +11,7 @@ from pyproj import Transformer
 from sentry_sdk.integrations.pymongo import PyMongoIntegration
 
 NAME = 'openaedmap-backend'
-VERSION = '2.8.1'
+VERSION = '2.8.2'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 

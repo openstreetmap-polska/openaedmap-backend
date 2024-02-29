@@ -8,9 +8,9 @@ services:
         "mongod",
         "--bind_ip_all",
         "--setParameter",
+        "transactionLifetimeLimitSeconds=90",
         "--wiredTigerCacheSizeGB",
         "0.5", # 512MB
-        "transactionLifetimeLimitSeconds=90",
         "--replSet",
         "rs0",
       ]
