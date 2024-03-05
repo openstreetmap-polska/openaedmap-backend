@@ -10,7 +10,7 @@ services:
         "--setParameter",
         "transactionLifetimeLimitSeconds=90",
         "--wiredTigerCacheSizeGB",
-        "0.5", # 512MB
+        "0.4", # ~400MB
         "--replSet",
         "rs0",
       ]
