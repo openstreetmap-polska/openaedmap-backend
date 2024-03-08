@@ -54,14 +54,17 @@ async def get_tile(
 ):
     bbox = _tile_to_bbox(z, x, y)
 
+    # no-transform:
+    # https://community.cloudflare.com/t/cloudflare-is-decompressing-my-mapbox-vector-tiles/278031/2
+
     if z <= TILE_COUNTRIES_MAX_Z:
         content = await _get_tile_country(z, bbox)
-        headers = {'Cache-Control': make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE)}
+        cache_control = make_cache_control(TILE_COUNTRIES_CACHE_MAX_AGE, TILE_COUNTRIES_CACHE_STALE) + ', no-transform'
     else:
         content = await _get_tile_aed(z, bbox)
-        headers = {'Cache-Control': make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE)}
+        cache_control = make_cache_control(DEFAULT_CACHE_MAX_AGE, TILE_AEDS_CACHE_STALE) + ', no-transform'
 
-    return Response(content, headers=headers, media_type='application/vnd.mapbox-vector-tile')
+    return Response(content, headers={'Cache-Control': cache_control}, media_type='application/vnd.mapbox-vector-tile')
 
 
 def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
