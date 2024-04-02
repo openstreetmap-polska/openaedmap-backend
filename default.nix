@@ -21,14 +21,14 @@ let
     pathsToLink = [ "/bin" "/lib" ];
   };
 
-  entrypoint = (pkgs.writeShellScriptBin "entrypoint" ''
+  entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
     set -ex
     dev-start
     set -o allexport
     source "envs/app/${envTag}.env" set
     set +o allexport
     exec python -m uvicorn main:app "$@"
-  '');
+  '';
 in
 with pkgs; dockerTools.buildLayeredImage {
   name = "backend";

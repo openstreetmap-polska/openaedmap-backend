@@ -14,24 +14,50 @@ let
   ];
 
   # Wrap Python to override LD_LIBRARY_PATH
-  wrappedPython = with pkgs; (symlinkJoin {
+  wrappedPython = with pkgs; symlinkJoin {
     name = "python";
     paths = [
       # Enable Python optimizations when in production
-      (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
+      # (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
+      python312
     ];
     buildInputs = [ makeWrapper ];
     postBuild = ''
       wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath libraries'}"
     '';
-  });
+  };
+
+  postgres' = pkgs.postgresql_16_jit.withPackages (ps: [ ps.postgis ]);
+  varnish' = pkgs.varnish;
+
+  supervisordConfig = with pkgs; writeTextFile {
+    name = "supervisord.conf";
+    text = ''
+      [supervisord]
+      logfile=data/supervisor/supervisord.log
+      pidfile=data/supervisor/supervisord.pid
+      strip_ansi=true
+
+      [program:postgres]
+      command=${postgres'}/bin/postgres -c config_file=config/postgres.conf -D data/postgres
+      stopsignal=INT
+      stdout_logfile=data/supervisor/postgres.log
+      stderr_logfile=data/supervisor/postgres.log
+
+      [program:varnish]
+      command=${varnish'}/bin/varnishd -f config/varnish.vcl -s file,data/cache/varnish.bin,2G
+      stopsignal=INT
+      stdout_logfile=data/supervisor/varnish.log
+      stderr_logfile=data/supervisor/varnish.log
+    '';
+  };
 
   packages' = with pkgs; [
     # Base packages
     wrappedPython
     coreutils
-    (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
-    varnish
+    postgres'
+    varnish'
 
     # Scripts
     # -- Alembic
@@ -55,7 +81,7 @@ let
       fi
 
       if [ ! -f data/postgres/PG_VERSION ]; then
-        initdb -D data/postgres \
+        ${postgres'}/bin/initdb -D data/postgres \
           --no-instructions \
           --locale=C.UTF-8 \
           --encoding=UTF8 \
@@ -66,11 +92,11 @@ let
       fi
 
       mkdir -p data/supervisor
-      supervisord -c config/supervisord.conf
+      supervisord -c "${supervisordConfig}"
       echo "Supervisor started"
 
       echo "Waiting for Postgres to start..."
-      while ! pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
+      while ! ${postgres'}/bin/pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
       echo "Postgres started, running migrations"
       alembic-upgrade
     '')
@@ -103,13 +129,6 @@ let
     (writeShellScriptBin "make-version" ''
       sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
     '')
-  ] ++ lib.optionals isDevelopment [
-    # Development packages
-    poetry
-    ruff
-
-    # Scripts
-    # -- Misc
     (writeShellScriptBin "nixpkgs-update" ''
       set -e
       hash=$(git ls-remote https://github.com/NixOS/nixpkgs nixpkgs-unstable | cut -f 1)
@@ -119,8 +138,12 @@ let
     (writeShellScriptBin "docker-build" ''
       set -e
       if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
-      docker load < "$(sudo nix-build --no-out-link)"
+      docker load < "$(nix-build --no-out-link)"
     '')
+  ] ++ lib.optionals isDevelopment [
+    # Development packages
+    poetry
+    ruff
   ];
 
   shell' = with pkgs; lib.optionalString isDevelopment ''
