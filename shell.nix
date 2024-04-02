@@ -18,8 +18,7 @@ let
     name = "python";
     paths = [
       # Enable Python optimizations when in production
-      # (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
-      python312
+      (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
     ];
     buildInputs = [ makeWrapper ];
     postBuild = ''
