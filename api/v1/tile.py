@@ -21,11 +21,11 @@ from config import (
     TILE_MIN_Z,
 )
 from middlewares.cache_middleware import make_cache_control
-from models.aed import AED
 from models.bbox import BBox
-from models.country import Country
-from states.aed_state import AEDState
-from states.country_state import CountryState
+from models.db.aed import AED
+from models.db.country import Country
+from services.aed_service import AEDService
+from services.country_service import CountryService
 from utils import abbreviate
 
 router = APIRouter()
@@ -108,13 +108,13 @@ def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
 
 @trace
 async def _get_tile_country(z: int, bbox: BBox) -> bytes:
-    countries = await CountryState.get_countries_within(bbox)
+    countries = await CountryService.get_intersecting(bbox)
     country_count_map: dict[str, str] = {}
 
     with start_span(description='Counting AEDs'):
 
         async def count_task(country: Country) -> None:
-            count = await AEDState.count_aeds_by_country_code(country.code)
+            count = await AEDService.count_by_country_code(country.code)
             country_count_map[country.name] = (count, abbreviate(count))
 
         async with create_task_group() as tg:
@@ -159,7 +159,7 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
 @trace
 async def _get_tile_aed(z: int, bbox: BBox) -> bytes:
     group_eps = 9.6 / 2**z if z < TILE_MAX_Z else None
-    aeds = await AEDState.get_aeds_within_bbox(bbox.extend(0.5), group_eps)
+    aeds = await AEDService.get_intersecting(bbox.extend(0.5), group_eps)
 
     return _mvt_encode(
         bbox,

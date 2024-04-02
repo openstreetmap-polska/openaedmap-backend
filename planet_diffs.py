@@ -9,51 +9,15 @@ from anyio import create_task_group, fail_after
 from httpx import AsyncClient
 from sentry_sdk import start_span, trace
 
-from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, REPLICATION_URL
+from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
 from utils import get_http_client, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
-
-
-def _format_sequence_number(sequence_number: int) -> str:
-    result = f'{sequence_number:09d}'
-    result = '/'.join(result[i : i + 3] for i in range(0, 9, 3))
-    return result
-
-
-def _format_actions(xml: str) -> str:
-    # <create> -> <action type="create">
-    # </create> -> </action>
-    # etc.
-    xml = re.sub(r'<(create|modify|delete)>', r'<action type="\1">', xml)
-    xml = re.sub(r'</(create|modify|delete)>', r'</action>', xml)
-    return xml
-
-
-@retry_exponential(AED_REBUILD_THRESHOLD)
-@trace
-async def _get_state(http: AsyncClient, sequence_number: int | None) -> tuple[int, float]:
-    if sequence_number is None:
-        r = await http.get('state.txt')
-    else:
-        r = await http.get(f'{_format_sequence_number(sequence_number)}.state.txt')
-
-    r.raise_for_status()
-
-    text = r.text
-    text = text.replace('\\:', ':')
-
-    sequence_number = int(re.search(r'sequenceNumber=(\d+)', text).group(1))
-    sequence_date_str = re.search(r'timestamp=(\S+)', text).group(1)
-    sequence_date = datetime.strptime(sequence_date_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC)
-    sequence_timestamp = sequence_date.timestamp()
-
-    return sequence_number, sequence_timestamp
 
 
 @trace
 async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
     with fail_after(PLANET_DIFF_TIMEOUT.total_seconds()):
-        async with get_http_client(REPLICATION_URL) as http:
+        async with get_http_client(PLANET_REPLICA_URL) as http:
             sequence_numbers = []
             sequence_timestamps = []
 
@@ -108,3 +72,39 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
             data = tuple(chain.from_iterable(data for _, data in result))
             data_timestamp = sequence_timestamps[0]
             return data, data_timestamp
+
+
+@retry_exponential(AED_REBUILD_THRESHOLD)
+@trace
+async def _get_state(http: AsyncClient, sequence_number: int | None) -> tuple[int, float]:
+    if sequence_number is None:
+        r = await http.get('state.txt')
+    else:
+        r = await http.get(f'{_format_sequence_number(sequence_number)}.state.txt')
+
+    r.raise_for_status()
+
+    text = r.text
+    text = text.replace('\\:', ':')
+
+    sequence_number = int(re.search(r'sequenceNumber=(\d+)', text).group(1))
+    sequence_date_str = re.search(r'timestamp=(\S+)', text).group(1)
+    sequence_date = datetime.strptime(sequence_date_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC)
+    sequence_timestamp = sequence_date.timestamp()
+
+    return sequence_number, sequence_timestamp
+
+
+def _format_sequence_number(sequence_number: int) -> str:
+    result = f'{sequence_number:09d}'
+    result = '/'.join(result[i : i + 3] for i in range(0, 9, 3))
+    return result
+
+
+def _format_actions(xml: str) -> str:
+    # <create> -> <action type="create">
+    # </create> -> </action>
+    # etc.
+    xml = re.sub(r'<(create|modify|delete)>', r'<action type="\1">', xml)
+    xml = re.sub(r'</(create|modify|delete)>', r'</action>', xml)
+    return xml

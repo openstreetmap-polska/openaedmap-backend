@@ -1,9 +1,9 @@
 { isDevelopment ? true }:
 
 let
-  # Currently using nixpkgs-23.11-darwin
+  # Currently using nixpkgs-unstable
   # Update with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/03e303468a0b89792bc40c2f3a7cd8a322b66fad.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/807c549feabce7eddbf259dbdcec9e0600a0660d.tar.gz") { };
 
   libraries' = with pkgs; [
     # Base libraries
@@ -29,8 +29,75 @@ let
   packages' = with pkgs; [
     # Base packages
     wrappedPython
+    (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
+    varnish
 
     # Scripts
+    # -- Alembic
+    (writeShellScriptBin "alembic-migration" ''
+      set -e
+      name=$1
+      if [ -z "$name" ]; then
+        read -p "Database migration name: " name
+      fi
+      alembic -c config/alembic.ini revision --autogenerate --message "$name"
+    '')
+    (writeShellScriptBin "alembic-upgrade" "alembic -c config/alembic.ini upgrade head")
+
+    # -- Supervisor
+    (writeShellScriptBin "dev-start" ''
+      set -e
+      pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
+      if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
+        echo "Supervisor is already running"
+        exit 0
+      fi
+
+      if [ ! -d data/postgres ]; then
+        initdb -D data/postgres \
+          --no-instructions \
+          --locale=C.UTF-8 \
+          --encoding=UTF8 \
+          --text-search-config=pg_catalog.simple \
+          --auth=password \
+          --username=postgres \
+          --pwfile=<(echo postgres)
+      fi
+
+      mkdir -p data/supervisor
+      supervisord -c config/supervisord.conf
+      echo "Supervisor started"
+
+      echo "Waiting for Postgres to start..."
+      while ! pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
+      echo "Postgres started, running migrations"
+      alembic-upgrade
+    '')
+    (writeShellScriptBin "dev-stop" ''
+      set -e
+      pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
+      if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
+        kill -INT "$pid"
+        echo "Supervisor stopping..."
+        while $(kill -0 "$pid" 2> /dev/null); do sleep 0.1; done
+        echo "Supervisor stopped"
+      else
+        echo "Supervisor is not running"
+      fi
+    '')
+    (writeShellScriptBin "dev-restart" ''
+      set -ex
+      dev-stop
+      dev-start
+    '')
+    (writeShellScriptBin "dev-clean" ''
+      set -e
+      dev-stop
+      rm -rf data/cache data/postgres
+    '')
+    (writeShellScriptBin "dev-logs-postgres" "tail -f data/supervisor/postgres.log")
+    (writeShellScriptBin "dev-logs-varnish" "tail -f data/supervisor/varnish.log")
+
     # -- Misc
     (writeShellScriptBin "make-version" ''
       sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
@@ -41,28 +108,10 @@ let
     ruff
 
     # Scripts
-    # -- Docker (dev)
-    (writeShellScriptBin "dev-start" ''
-      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
-      docker compose -f docker-compose.dev.yml up -d
-    '')
-    (writeShellScriptBin "dev-stop" ''
-      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
-      docker compose -f docker-compose.dev.yml down
-    '')
-    (writeShellScriptBin "dev-logs" ''
-      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
-      docker compose -f docker-compose.dev.yml logs -f
-    '')
-    (writeShellScriptBin "dev-clean" ''
-      dev-stop
-      [ -d data/db ] && sudo rm -r data/db
-    '')
-
     # -- Misc
     (writeShellScriptBin "nixpkgs-update" ''
       set -e
-      hash=$(git ls-remote https://github.com/NixOS/nixpkgs nixpkgs-23.11-darwin | cut -f 1)
+      hash=$(git ls-remote https://github.com/NixOS/nixpkgs nixpkgs-unstable | cut -f 1)
       sed -i -E "s|/nixpkgs/archive/[0-9a-f]{40}\.tar\.gz|/nixpkgs/archive/$hash.tar.gz|" shell.nix
       echo "Nixpkgs updated to $hash"
     '')
@@ -74,7 +123,9 @@ let
   ];
 
   shell' = with pkgs; lib.optionalString isDevelopment ''
-    [ ! -e .venv/bin/python ] && [ -h .venv/bin/python ] && rm -r .venv
+    current_python=$(readlink -e .venv/bin/python || echo "")
+    current_python=''${current_python%/bin/*}
+    [ "$current_python" != "${wrappedPython}" ] && rm -r .venv
 
     echo "Installing Python dependencies"
     export POETRY_VIRTUALENVS_IN_PROJECT=1
@@ -99,6 +150,6 @@ let
   '';
 in
 pkgs.mkShell {
-  buildInputs = libraries' ++ packages';
+  buildInputs = packages';
   shellHook = shell';
 }

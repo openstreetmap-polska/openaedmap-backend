@@ -8,34 +8,32 @@ from anyio import create_task_group
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE, startup_setup
+from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE
 from json_response import CustomJSONResponse
 from middlewares.cache_middleware import CacheMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
-from states.aed_state import AEDState
-from states.country_state import CountryState
-from states.worker_state import WorkerState, WorkerStateEnum
+from services.aed_service import AEDService
+from services.country_service import CountryService
+from services.worker_service import WorkerService
 
 
 @asynccontextmanager
 async def lifespan(_):
-    worker_state = WorkerState()
-    await worker_state.ainit()
+    worker_state = await WorkerService.init()
 
     if worker_state.is_primary:
-        await startup_setup()
         async with create_task_group() as tg:
-            await tg.start(CountryState.update_db_task)
-            await tg.start(AEDState.update_db_task)
+            await tg.start(CountryService.update_db_task)
+            await tg.start(AEDService.update_db_task)
 
-            await worker_state.set_state(WorkerStateEnum.RUNNING)
+            await worker_state.set_state('running')
             yield
 
             # on shutdown, always abort the tasks
             tg.cancel_scope.cancel()
     else:
-        await worker_state.wait_for_state(WorkerStateEnum.RUNNING)
+        await worker_state.wait_for_state('running')
         yield
 
 

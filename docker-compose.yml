@@ -1,41 +1,11 @@
 version: "3"
 
 services:
-  db:
-    image: docker.io/library/mongo
-    restart: unless-stopped
-    command: [
-        "mongod",
-        "--bind_ip_all",
-        "--setParameter",
-        "transactionLifetimeLimitSeconds=90",
-        "--wiredTigerCacheSizeGB",
-        "0.4", # ~400MB
-        "--replSet",
-        "rs0",
-      ]
-
-    volumes:
-      - ./data/db:/data/db
-
-  db-setup:
-    image: docker.io/library/mongo
-    entrypoint: ["/bin/sh", "/mongo-init-replica.sh"]
-    command: ["db:27017"]
-
-    depends_on:
-      - db
-
-    volumes:
-      - ./scripts/mongo-init-replica.sh:/mongo-init-replica.sh:ro
-
   app:
-    image: backend:${TAG:-latest}
+    image: backend:${TAG}
     restart: unless-stopped
     command:
       [
-        "--host",
-        "0.0.0.0",
         "--workers",
         "${WORKERS:-1}",
         "--timeout-keep-alive",
@@ -47,30 +17,10 @@ services:
         "*",
       ]
 
-    depends_on:
-      - db
-
-    env_file:
-      - envs/app/${TAG:-dev}.env
-
-    environment:
-      MONGO_HOST: db
-
-    volumes:
-      - /mnt/data/${TAG:-dev}/photos:/app/data/photos
-
-  cache:
-    image: docker.io/library/varnish:alpine
-    restart: unless-stopped
-    user: root
-    command: ["varnishd", "-F", "-f", "/etc/varnish/default.vcl", "-s", "file,/var/lib/varnish/varnish_storage.bin,2G"]
-
-    depends_on:
-      - app
-
     ports:
       - ${LISTEN:-80}:80
 
     volumes:
-      - ./default.vcl:/etc/varnish/default.vcl:ro
-      - ./data/cache:/var/lib/varnish
+      - ./data/db:/app/data/db
+      - ./data/cache:/app/data/cache
+      - /mnt/data/${TAG}/photos:/app/data/photos

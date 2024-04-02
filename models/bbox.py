@@ -30,7 +30,6 @@ class BBox(NamedTuple):
     def to_tuple(self) -> tuple[float, float, float, float]:
         p1_x, p1_y = get_coordinates(self.p1)[0]
         p2_x, p2_y = get_coordinates(self.p2)[0]
-
         return (p1_x, p1_y, p2_x, p2_y)
 
     def to_polygon(self, *, nodes_per_edge: int = 2) -> Polygon:
@@ -57,7 +56,6 @@ class BBox(NamedTuple):
         right_edge = np.column_stack((np.full(nodes_per_edge - 2, p2_x), y_vals[1:-1]))
 
         all_coords = np.concatenate((bottom_edge, right_edge, top_edge[::-1], left_edge[::-1]))
-
         return Polygon(all_coords)
 
     def correct_for_dateline(self) -> tuple[Self, ...]:

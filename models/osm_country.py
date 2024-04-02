@@ -6,6 +6,6 @@ from shapely.geometry.base import BaseGeometry
 
 class OSMCountry(NamedTuple):
     tags: dict[str, str]
-    timestamp: float
-    representative_point: Point
     geometry: BaseGeometry
+    representative_point: Point
+    timestamp: float
