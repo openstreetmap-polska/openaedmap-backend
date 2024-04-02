@@ -45,7 +45,7 @@ with pkgs; dockerTools.buildLayeredImage {
   extraCommands = ''
     set -e
     mkdir app && cd app
-    mkdir data
+    mkdir -p data/cache data/postgres data/photos
     cp "${./.}"/*.py .
     cp -r "${./.}"/alembic_ .
     cp -r "${./.}"/api .
@@ -75,6 +75,8 @@ with pkgs; dockerTools.buildLayeredImage {
       "TZ=UTC"
     ];
     Volumes = {
+      "/app/data/cache" = { };
+      "/app/data/postgres" = { };
       "/app/data/photos" = { };
     };
     Entrypoint = [ "${entrypoint}/bin/entrypoint" ];
