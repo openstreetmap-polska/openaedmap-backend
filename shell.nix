@@ -53,6 +53,7 @@ let
         exit 0
       fi
 
+      mkdir -p data
       if [ ! -d data/postgres ]; then
         initdb -D data/postgres \
           --no-instructions \

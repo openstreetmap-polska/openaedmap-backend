@@ -44,7 +44,6 @@ with pkgs; dockerTools.buildLayeredImage {
 
   extraCommands = ''
     set -e
-    mkdir tmp
     mkdir app && cd app
     cp "${./.}"/*.py .
     cp -r "${./.}"/alembic_ .
