@@ -29,6 +29,7 @@ let
   packages' = with pkgs; [
     # Base packages
     wrappedPython
+    coreutils
     (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
     varnish
 
