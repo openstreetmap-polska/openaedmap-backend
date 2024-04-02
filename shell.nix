@@ -54,7 +54,7 @@ let
         exit 0
       fi
 
-      if [ ! -d data/postgres ]; then
+      if [ ! -f data/postgres/PG_VERSION ]; then
         initdb -D data/postgres \
           --no-instructions \
           --locale=C.UTF-8 \
