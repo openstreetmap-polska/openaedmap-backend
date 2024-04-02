@@ -24,11 +24,9 @@ let
   entrypoint = (pkgs.writeShellScriptBin "entrypoint" ''
     set -ex
     dev-start
-
     set -o allexport
     source "envs/app/${envTag}.env" set
-    +o allexport
-
+    set +o allexport
     exec python -m uvicorn main:app "$@"
   '');
 in

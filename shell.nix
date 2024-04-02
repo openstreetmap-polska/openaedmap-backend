@@ -144,7 +144,7 @@ let
       echo "Loading .env file"
       set -o allexport
       source .env set
-      +o allexport
+      set +o allexport
     fi
   '' + lib.optionalString (!isDevelopment) ''
     make-version
