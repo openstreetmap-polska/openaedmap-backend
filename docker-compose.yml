@@ -23,5 +23,6 @@ services:
       - ${LISTEN:-80}:8000
 
     volumes:
+      - ./.migrate.json:/app/.migrate.json
       - ./data/postgres:/app/data/postgres
       - /mnt/data/${TAG}/photos:/app/data/photos

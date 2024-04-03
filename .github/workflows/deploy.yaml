@@ -104,6 +104,7 @@ jobs:
             git reset --hard "origin/$tag"
 
             echo "Restarting containers"
+            docker compose down --remove-orphans
             TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
 
             echo "Pruning dangling images"
