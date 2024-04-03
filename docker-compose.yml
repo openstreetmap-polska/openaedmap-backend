@@ -6,15 +6,20 @@ services:
     restart: unless-stopped
     command:
       [
-        "--host",
-        "0.0.0.0",
+        "--bind",
+        "0.0.0.0:8000",
         "--workers",
         "${WORKERS:-1}",
-        "--timeout-keep-alive",
-        "300",
-        "--timeout-graceful-shutdown",
+        "--worker-class",
+        "uvicorn.workers.UvicornWorker",
+        "--max-requests",
+        "1000",
+        "--max-requests-jitter",
+        "100",
+        "--graceful-timeout",
         "5",
-        "--proxy-headers",
+        "--keep-alive",
+        "300",
         "--forwarded-allow-ips",
         "*",
       ]
@@ -23,6 +28,5 @@ services:
       - ${LISTEN:-80}:8000
 
     volumes:
-      - ./.migrate.json:/app/.migrate.json
       - ./data/postgres:/app/data/postgres
       - /mnt/data/${TAG}/photos:/app/data/photos

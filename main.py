@@ -16,7 +16,6 @@ from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService
 from services.country_service import CountryService
-from services.photo_service import PhotoService
 from services.worker_service import WorkerService
 
 
@@ -28,9 +27,6 @@ async def lifespan(_):
         async with create_task_group() as tg:
             await tg.start(CountryService.update_db_task)
             await tg.start(AEDService.update_db_task)
-
-            # TODO: remove after migration
-            await PhotoService.migrate()
 
             await worker_state.set_state('running')
             yield
