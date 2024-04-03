@@ -1,9 +1,8 @@
 from typing import override
 
 from fastapi.responses import JSONResponse
-from msgspec.json import Encoder
 
-_encode = Encoder(decimal_format='number').encode
+from utils import JSON_ENCODE
 
 
 class CustomJSONResponse(JSONResponse):
@@ -11,4 +10,4 @@ class CustomJSONResponse(JSONResponse):
 
     @override
     def render(self, content) -> bytes:
-        return _encode(content)
+        return JSON_ENCODE(content)

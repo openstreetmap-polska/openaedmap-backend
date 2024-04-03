@@ -1,4 +1,4 @@
-from datetime import timedelta
+import logging
 
 import xmltodict
 from authlib.integrations.httpx_client import OAuth2Auth
@@ -17,7 +17,7 @@ class OpenStreetMap:
     def __init__(self, oauth2_credentials: dict):
         self._http = get_http_client(OPENSTREETMAP_API_URL, auth=OAuth2Auth(oauth2_credentials))
 
-    @retry_exponential(timedelta(seconds=10))
+    @retry_exponential(10)
     @trace
     async def get_authorized_user(self) -> dict | None:
         r = await self._http.get('/user/details.json')
@@ -29,7 +29,7 @@ class OpenStreetMap:
 
         return r.json()['user']
 
-    @retry_exponential(timedelta(seconds=10))
+    @retry_exponential(10)
     @trace
     async def get_node_xml(self, node_id: int) -> dict | None:
         r = await self._http.get(f'/node/{node_id}')
@@ -73,7 +73,8 @@ class OpenStreetMap:
 
         changeset_id = r.text
         osm_change = osm_change.replace(CHANGESET_ID_PLACEHOLDER, changeset_id)
-        print(f'🌐 Changeset: https://www.openstreetmap.org/changeset/{changeset_id}')
+        logging.info('Uploading changeset %s', changeset_id)
+        logging.info('https://www.openstreetmap.org/changeset/%s', changeset_id)
 
         upload_resp = await self._http.post(
             f'/changeset/{changeset_id}/upload',

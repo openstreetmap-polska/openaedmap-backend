@@ -2,15 +2,15 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Response
 from pytz import timezone
 from shapely import get_coordinates
 from tzfpy import get_tz
 
-from middlewares.cache_middleware import configure_cache
+from middlewares.cache_control_middleware import cache_control
 from middlewares.skip_serialization import skip_serialization
-from states.aed_state import AEDState
-from states.photo_state import PhotoState
+from services.aed_service import AEDService
+from services.photo_service import PhotoService
 from utils import get_wikimedia_commons_url
 
 router = APIRouter()
@@ -40,11 +40,11 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
         image_url
         and (photo_id_match := photo_id_re.search(image_url))
         and (photo_id := photo_id_match.group('id'))
-        and (photo_info := await PhotoState.get_photo_by_id(photo_id))
+        and (await PhotoService.get_by_id(photo_id)) is not None
     ):
         return {
-            '@photo_id': photo_info.id,
-            '@photo_url': f'/api/v1/photos/view/{photo_info.id}.webp',
+            '@photo_id': photo_id,
+            '@photo_url': f'/api/v1/photos/view/{photo_id}.webp',
             '@photo_source': None,
         }
 
@@ -72,18 +72,16 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
 
 
 @router.get('/node/{node_id}')
-@configure_cache(timedelta(minutes=1), stale=timedelta(minutes=5))
+@cache_control(timedelta(minutes=1), stale=timedelta(minutes=5))
 @skip_serialization()
 async def get_node(node_id: int):
-    aed = await AEDState.get_aed_by_id(node_id)
-
+    aed = await AEDService.get_by_id(node_id)
     if aed is None:
-        raise HTTPException(404, f'Node {node_id} not found')
-
-    x, y = get_coordinates(aed.position)[0].tolist()
+        return Response(f'Node {node_id} not found', 404)
 
     photo_dict = await _get_image_data(aed.tags)
 
+    x, y = get_coordinates(aed.position)[0].tolist()
     timezone_name, timezone_offset = _get_timezone(x, y)
     timezone_dict = {
         '@timezone_name': timezone_name,
@@ -100,7 +98,7 @@ async def get_node(node_id: int):
                 **photo_dict,
                 **timezone_dict,
                 'type': 'node',
-                'id': aed.id,
+                'id': node_id,
                 'lat': y,
                 'lon': x,
                 'tags': aed.tags,
