@@ -1,16 +1,38 @@
 import logging
+import pathlib
 from io import BytesIO
 
 from fastapi import UploadFile
 from PIL import Image, ImageOps
 from sentry_sdk import trace
+from sqlalchemy import select
 
 from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE
 from db import db_read, db_write
 from models.db.photo import Photo
+from utils import JSON_DECODE
 
 
 class PhotoService:
+    @staticmethod
+    async def migrate() -> None:
+        async with db_write() as session:
+            stmt = select(Photo.id).limit(1)
+            scalar = await session.scalar(stmt)
+            if scalar is not None:
+                return
+
+            logging.info('Migrating photos')
+            file = pathlib.Path('.migrate.json').read_bytes()
+            data: list[dict] = JSON_DECODE(file)
+            for item in data:
+                photo = Photo(
+                    node_id=int(item['node_id']),
+                    user_id=int(item['user_id']),
+                )
+                photo.id = item['id']
+                session.add(photo)
+
     @staticmethod
     @trace
     async def get_by_id(id: str, *, check_file: bool = True) -> Photo | None:

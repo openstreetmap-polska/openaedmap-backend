@@ -201,3 +201,5 @@ pyrightconfig.json
 
 data/*
 cert/*
+
+.migrate.json
