@@ -18,9 +18,8 @@ services:
       ]
 
     ports:
-      - ${LISTEN:-80}:80
+      - ${LISTEN:-80}:8000
 
     volumes:
-      - ./data/cache:/app/data/cache
       - ./data/postgres:/app/data/postgres
       - /mnt/data/${TAG}/photos:/app/data/photos

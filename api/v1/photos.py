@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
 
 from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
-from middlewares.cache_middleware import configure_cache
+from middlewares.cache_control_middleware import cache_control
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
 from osm_change import update_node_tags_osm_change
 from services.aed_service import AEDService
@@ -49,7 +49,7 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
 
 
 @router.get('/view/{id}.webp')
-@configure_cache(timedelta(days=365), stale=timedelta(days=365))
+@cache_control(timedelta(days=365), stale=timedelta(days=365))
 async def view(id: str):
     photo = await PhotoService.get_by_id(id)
     if photo is None:
@@ -59,7 +59,7 @@ async def view(id: str):
 
 
 @router.get('/proxy/direct/{url_encoded:path}')
-@configure_cache(timedelta(days=7), stale=timedelta(days=7))
+@cache_control(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_direct(url_encoded: str):
     url = unquote_plus(url_encoded)
     file, content_type = await _fetch_image(url)
@@ -67,7 +67,7 @@ async def proxy_direct(url_encoded: str):
 
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
-@configure_cache(timedelta(days=7), stale=timedelta(days=7))
+@cache_control(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_wikimedia_commons(path_encoded: str):
     meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
 

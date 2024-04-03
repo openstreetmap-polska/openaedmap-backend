@@ -20,7 +20,7 @@ from config import (
     TILE_MAX_Z,
     TILE_MIN_Z,
 )
-from middlewares.cache_middleware import make_cache_control
+from middlewares.cache_control_middleware import make_cache_control
 from models.bbox import BBox
 from models.db.aed import AED
 from models.db.country import Country

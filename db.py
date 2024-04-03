@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
+from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from config import POSTGRES_LOG, POSTGRES_URL
+from config import POSTGRES_LOG, POSTGRES_URL, REDIS_URL
 from utils import JSON_DECODE, JSON_ENCODE
 
 _db_engine = create_async_engine(
@@ -10,7 +11,7 @@ _db_engine = create_async_engine(
     echo=POSTGRES_LOG,
     echo_pool=POSTGRES_LOG,
     json_deserializer=JSON_DECODE,
-    json_serializer=lambda x: JSON_ENCODE(x).decode(),  # TODO: is decode needed?
+    json_serializer=lambda x: JSON_ENCODE(x).decode(),
     query_cache_size=128,
 )
 
@@ -40,3 +41,12 @@ async def db_write():
     ) as session:
         yield session
         await session.commit()
+
+
+_redis_pool = ConnectionPool().from_url(REDIS_URL)
+
+
+@asynccontextmanager
+async def redis():
+    async with Redis(connection_pool=_redis_pool) as r:
+        yield r

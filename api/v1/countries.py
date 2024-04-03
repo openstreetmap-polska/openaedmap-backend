@@ -6,7 +6,7 @@ from fastapi import APIRouter, Path
 from sentry_sdk import start_span
 from shapely import get_coordinates
 
-from middlewares.cache_middleware import configure_cache
+from middlewares.cache_control_middleware import cache_control
 from middlewares.skip_serialization import skip_serialization
 from models.db.country import Country
 from services.aed_service import AEDService
@@ -16,7 +16,7 @@ router = APIRouter(prefix='/countries')
 
 
 @router.get('/names')
-@configure_cache(timedelta(hours=1), stale=timedelta(days=7))
+@cache_control(timedelta(hours=1), stale=timedelta(days=7))
 @skip_serialization()
 async def get_names(language: str | None = None):
     countries = await CountryService.get_all()
@@ -56,7 +56,7 @@ async def get_names(language: str | None = None):
 
 
 @router.get('/{country_code}.geojson')
-@configure_cache(timedelta(hours=1), stale=timedelta(seconds=0))
+@cache_control(timedelta(hours=1), stale=timedelta(seconds=0))
 @skip_serialization(
     {
         'Content-Disposition': 'attachment',

@@ -8,9 +8,10 @@ from anyio import create_task_group
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import DEFAULT_CACHE_MAX_AGE, DEFAULT_CACHE_STALE
 from json_response import CustomJSONResponse
-from middlewares.cache_middleware import CacheMiddleware
+from middlewares.cache_control_middleware import CacheControlMiddleware
+from middlewares.cache_response_middleware import CacheResponseMiddleware
+from middlewares.compress_middleware import CompressMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService
@@ -38,13 +39,8 @@ async def lifespan(_):
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=CustomJSONResponse)
-app.add_middleware(ProfilerMiddleware)
-app.add_middleware(VersionMiddleware)
-app.add_middleware(
-    CacheMiddleware,
-    max_age=DEFAULT_CACHE_MAX_AGE,
-    stale=DEFAULT_CACHE_STALE,
-)
+app.add_middleware(CacheControlMiddleware)
+app.add_middleware(CacheResponseMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -52,6 +48,9 @@ app.add_middleware(
     allow_methods=['GET'],
     max_age=int(timedelta(days=1).total_seconds()),
 )
+app.add_middleware(VersionMiddleware)
+app.add_middleware(CompressMiddleware)
+app.add_middleware(ProfilerMiddleware)
 
 
 def _make_router(path: str, prefix: str) -> APIRouter:

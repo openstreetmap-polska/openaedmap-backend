@@ -26,37 +26,12 @@ let
     '';
   };
 
-  postgres' = pkgs.postgresql_16_jit.withPackages (ps: [ ps.postgis ]);
-  varnish' = pkgs.varnish;
-
-  supervisordConfig = with pkgs; writeTextFile {
-    name = "supervisord.conf";
-    text = ''
-      [supervisord]
-      logfile=data/supervisor/supervisord.log
-      pidfile=data/supervisor/supervisord.pid
-      strip_ansi=true
-
-      [program:postgres]
-      command=${postgres'}/bin/postgres -c config_file=config/postgres.conf -D data/postgres
-      stopsignal=INT
-      stdout_logfile=data/supervisor/postgres.log
-      stderr_logfile=data/supervisor/postgres.log
-
-      [program:varnish]
-      command=${varnish'}/bin/varnishd -f config/varnish.vcl -s file,data/cache/varnish.bin,2G
-      stopsignal=INT
-      stdout_logfile=data/supervisor/varnish.log
-      stderr_logfile=data/supervisor/varnish.log
-    '';
-  };
-
   packages' = with pkgs; [
     # Base packages
     wrappedPython
     coreutils
-    postgres'
-    varnish'
+    (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
+    redis # TODO: switch to valkey on new version
 
     # Scripts
     # -- Alembic
@@ -80,7 +55,7 @@ let
       fi
 
       if [ ! -f data/postgres/PG_VERSION ]; then
-        ${postgres'}/bin/initdb -D data/postgres \
+        initdb -D data/postgres \
           --no-instructions \
           --locale=C.UTF-8 \
           --encoding=UTF8 \
@@ -91,11 +66,11 @@ let
       fi
 
       mkdir -p data/supervisor
-      supervisord -c "${supervisordConfig}"
+      supervisord -c config/supervisord.conf
       echo "Supervisor started"
 
       echo "Waiting for Postgres to start..."
-      while ! ${postgres'}/bin/pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
+      while ! pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
       echo "Postgres started, running migrations"
       alembic-upgrade
     '')
@@ -119,10 +94,10 @@ let
     (writeShellScriptBin "dev-clean" ''
       set -e
       dev-stop
-      rm -rf data/cache data/postgres
+      rm -rf data/postgres
     '')
     (writeShellScriptBin "dev-logs-postgres" "tail -f data/supervisor/postgres.log")
-    (writeShellScriptBin "dev-logs-varnish" "tail -f data/supervisor/varnish.log")
+    (writeShellScriptBin "dev-logs-redis" "tail -f data/supervisor/redis.log")
 
     # -- Misc
     (writeShellScriptBin "make-version" ''

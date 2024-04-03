@@ -28,6 +28,7 @@ if ENVIRONMENT:
 
 POSTGRES_LOG = os.getenv('POSTGRES_LOG', '0').strip().lower() in ('1', 'true', 'yes')
 POSTGRES_URL = 'postgresql+asyncpg://postgres:postgres@127.0.0.1/postgres'
+REDIS_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1?protocol=3')
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
