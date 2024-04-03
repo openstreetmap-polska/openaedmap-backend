@@ -27,7 +27,7 @@ let
     set -o allexport
     source "envs/app/${envTag}.env" set
     set +o allexport
-    exec python -m uvicorn main:app "$@"
+    exec python -m gunicorn main:app "$@"
   '';
 in
 with pkgs; dockerTools.buildLayeredImage {
