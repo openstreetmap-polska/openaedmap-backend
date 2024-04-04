@@ -173,4 +173,4 @@ async def _set_cached_response(url: URL, cached: CachedResponse) -> None:
     logging.debug('Caching response for %r', key)
 
     async with redis() as conn:
-        await conn.set(key, value, ex=ttl, nx=True)
+        await conn.set(key, value, ex=ttl)
