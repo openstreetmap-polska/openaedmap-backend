@@ -27,21 +27,19 @@ class PhotoService:
     @staticmethod
     @trace
     async def upload(node_id: int, user_id: int, file: UploadFile) -> Photo:
-        photo = Photo(
-            node_id=node_id,
-            user_id=user_id,
-        )
-
         img = Image.open(file.file)
         img = ImageOps.exif_transpose(img)
         img = _resize_image(img)
         img_bytes = _optimize_quality(img)
 
-        await photo.file_path.write_bytes(img_bytes)
-
         async with db_write() as session:
+            photo = Photo(
+                node_id=node_id,
+                user_id=user_id,
+            )
             session.add(photo)
 
+        await photo.file_path.write_bytes(img_bytes)
         return photo
 
 

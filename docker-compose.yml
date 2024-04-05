@@ -24,6 +24,8 @@ services:
         "*",
       ]
 
+    shm_size: '2gb'
+
     ports:
       - ${LISTEN:-80}:8000
 
