@@ -86,10 +86,10 @@ class AEDService:
         cls, bbox_or_geom: BBox | BaseGeometry, group_eps: float | None
     ) -> Sequence[AED | AEDGroup]:
         geometry = bbox_or_geom.to_polygon() if isinstance(bbox_or_geom, BBox) else bbox_or_geom
-        geometry_wkt = 'SRID=4326;' + geometry.wkt
+        geometry_wkt = geometry.wkt
 
         async with db_read() as session:
-            stmt = select(AED).where(func.ST_Intersects(AED.position, func.ST_GeomFromEWKT(geometry_wkt)))
+            stmt = select(AED).where(func.ST_Intersects(AED.position, func.ST_GeomFromText(geometry_wkt, 4326)))
             aeds = (await session.scalars(stmt)).all()
 
         if len(aeds) <= 1 or group_eps is None:

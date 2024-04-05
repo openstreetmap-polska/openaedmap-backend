@@ -12,6 +12,8 @@ _db_engine = create_async_engine(
     echo_pool=POSTGRES_LOG,
     json_deserializer=JSON_DECODE,
     json_serializer=lambda x: JSON_ENCODE(x).decode(),
+    pool_size=8,
+    max_overflow=-1,
     query_cache_size=128,
 )
 

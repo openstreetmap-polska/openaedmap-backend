@@ -46,10 +46,10 @@ class CountryService:
     @trace
     async def get_intersecting(cls, bbox_or_geom: BBox | Point) -> Sequence[Country]:
         geometry = bbox_or_geom.to_polygon() if isinstance(bbox_or_geom, BBox) else bbox_or_geom
-        geometry_wkt = 'SRID=4326;' + geometry.wkt
+        geometry_wkt = geometry.wkt
 
         async with db_read() as session:
-            stmt = select(Country).where(func.ST_Intersects(Country.geometry, func.ST_GeomFromEWKT(geometry_wkt)))
+            stmt = select(Country).where(func.ST_Intersects(Country.geometry, func.ST_GeomFromText(geometry_wkt, 4326)))
             return (await session.scalars(stmt)).all()
 
 

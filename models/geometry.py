@@ -19,7 +19,7 @@ class PointType(UserDefinedType):
                 return None
 
             x, y = get_coordinates(value)[0]
-            return f'SRID=4326;POINT({x} {y})'  # WKT
+            return f'POINT({x} {y})'  # WKT
 
         return process
 
@@ -50,7 +50,7 @@ class PolygonType(UserDefinedType):
             if value is None:
                 return None
 
-            return 'SRID=4326;' + value.wkt
+            return value.wkt
 
         return process
 
