@@ -217,7 +217,7 @@ async def _update_db_diffs(last_update: float) -> None:
         return
 
     # aeds need to be deduplicated to use ON CONFLICT
-    id_aed_map: dict[int, AED] = []
+    id_aed_map: dict[int, AED] = {}
     remove_ids: set[int] = set()
 
     for action in actions:
