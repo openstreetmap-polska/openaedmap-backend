@@ -204,6 +204,11 @@ async def _update_db_snapshot() -> None:
         logging.info('Updating country codes')
         await _assign_country_codes(aeds)
 
+        logging.info('Updating statistics')
+        async with db_write() as session:
+            await session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
+            await session.execute(text(f'ANALYZE "{AED.__tablename__}"'))
+
     logging.info('AED update finished (=%d)', len(aeds))
 
 

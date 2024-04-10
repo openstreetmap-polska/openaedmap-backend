@@ -42,6 +42,7 @@ with pkgs; dockerTools.buildLayeredImage {
 
   extraCommands = ''
     set -e
+    mkdir tmp
     mkdir app && cd app
     mkdir -p data/postgres data/photos
     cp "${./.}"/*.py .
