@@ -58,6 +58,7 @@ with pkgs; dockerTools.buildLayeredImage {
   fakeRootCommands = ''
     set -e
     ${dockerTools.shadowSetup}
+    chmod 0777 tmp
     groupadd --system -g 999 docker
     useradd --system --no-create-home -u 999 -g 999 docker
     chown -R docker:docker app
