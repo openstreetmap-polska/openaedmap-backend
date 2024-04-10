@@ -23,6 +23,7 @@ let
 
   entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
     set -ex
+    rm -f data/postgres/postmaster.pid
     dev-start
     set -o allexport
     source "envs/app/${envTag}.env" set
