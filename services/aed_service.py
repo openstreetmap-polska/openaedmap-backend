@@ -141,7 +141,7 @@ class AEDService:
 
 @trace
 async def _assign_country_codes(aeds: Sequence[AED]) -> None:
-    aed_ids: tuple[int, ...] = tuple(map(attrgetter('id'), aeds))
+    aed_ids: set[int] = set(map(attrgetter('id'), aeds))
 
     async with db_write() as session:
         for batch in batched(aed_ids, 10_000):
@@ -221,15 +221,20 @@ async def _update_db_diffs(last_update: float) -> None:
         logging.info('Nothing to update')
         return
 
-    aeds: list[AED] = []
+    # aeds need to be deduplicated to use ON CONFLICT
+    id_aed_map: dict[int, AED] = {}
     remove_ids: set[int] = set()
 
     for action in actions:
         for result in _process_action(action):
             if isinstance(result, AED):
-                aeds.append(result)
+                prev = id_aed_map.get(result.id)
+                if prev is None or prev.version < result.version:
+                    id_aed_map[result.id] = result
             else:
                 remove_ids.add(result)
+
+    aeds = id_aed_map.values()
 
     async with db_write() as session:
         if aeds:
