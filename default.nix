@@ -23,6 +23,7 @@ let
 
   entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
     set -ex
+    rm -f data/postgres/postmaster.pid
     dev-start
     set -o allexport
     source "envs/app/${envTag}.env" set
@@ -42,6 +43,7 @@ with pkgs; dockerTools.buildLayeredImage {
 
   extraCommands = ''
     set -e
+    mkdir tmp
     mkdir app && cd app
     mkdir -p data/postgres data/photos
     cp "${./.}"/*.py .
@@ -57,6 +59,7 @@ with pkgs; dockerTools.buildLayeredImage {
   fakeRootCommands = ''
     set -e
     ${dockerTools.shadowSetup}
+    chmod 0777 tmp
     groupadd --system -g 999 docker
     useradd --system --no-create-home -u 999 -g 999 docker
     chown -R docker:docker app

@@ -12,6 +12,7 @@ from config import COUNTRY_UPDATE_DELAY
 from country_code_assigner import CountryCodeAssigner
 from db import db_read, db_write
 from models.bbox import BBox
+from models.db.aed import AED
 from models.db.country import Country
 from osm_countries import get_osm_countries
 from services.state_service import StateService
@@ -108,6 +109,12 @@ async def _update_db() -> None:
     from services.aed_service import AEDService
 
     await AEDService.update_country_codes()
+
+    logging.info('Updating statistics')
+    async with db_write() as session:
+        await session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
+        await session.execute(text(f'ANALYZE "{AED.__tablename__}", "{Country.__tablename__}"'))
+
     logging.info('Country update finished')
 
 

@@ -65,12 +65,12 @@ let
           --pwfile=<(echo postgres)
       fi
 
-      mkdir -p data/supervisor
+      mkdir -p /tmp/openaedmap-postgres data/supervisor
       supervisord -c config/supervisord.conf
       echo "Supervisor started"
 
       echo "Waiting for Postgres to start..."
-      while ! pg_isready -q -h 127.0.0.1 -t 10; do sleep 0.1; done
+      while ! pg_isready -q -h /tmp/openaedmap-postgres -t 10; do sleep 0.1; done
       echo "Postgres started, running migrations"
       alembic-upgrade
     '')
