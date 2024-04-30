@@ -1,11 +1,9 @@
-{ pkgs ? import <nixpkgs> { }, ... }:
+{ pkgs ? import <nixpkgs> { } }:
 
 let
   envTag = builtins.getEnv "TAG";
 
-  shell = import ./shell.nix {
-    isDevelopment = false;
-  };
+  shell = import ./shell.nix { isDevelopment = false; };
 
   python-venv = pkgs.buildEnv {
     name = "python-venv";

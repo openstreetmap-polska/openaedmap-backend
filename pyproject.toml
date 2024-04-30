@@ -36,7 +36,7 @@ supervisor = "^4.2.5"
 tzfpy = "*"
 uvicorn = {extras = ["standard"], version = "<1"}
 xmltodict = "<1"
-zstandard = {extras = ["cffi"], version = "<1"}
+zstandard = "<1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"

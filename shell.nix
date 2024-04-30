@@ -3,17 +3,16 @@
 let
   # Currently using nixpkgs-unstable
   # Update with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/2fd19c8be2551a61c1ddc3d9f86d748f4db94f00.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/7992ec3a816aa3f5cf2b62146c5412c8581943d1.tar.gz") { };
 
-  libraries' = with pkgs; [
-    # Base libraries
+  pythonLibs = with pkgs; [
     stdenv.cc.cc.lib
     file.out
     libxml2.out
     zlib.out
   ];
 
-  # Wrap Python to override LD_LIBRARY_PATH
+  # Override LD_LIBRARY_PATH to load Python libraries
   wrappedPython = with pkgs; symlinkJoin {
     name = "python";
     paths = [
@@ -22,13 +21,14 @@ let
     ];
     buildInputs = [ makeWrapper ];
     postBuild = ''
-      wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath libraries'}"
+      wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
     '';
   };
 
   packages' = with pkgs; [
-    # Base packages
     wrappedPython
+    poetry
+    ruff
     coreutils
     (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
     redis # TODO: switch to valkey on new version
@@ -114,10 +114,6 @@ let
       if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
       docker load < "$(nix-build --no-out-link)"
     '')
-  ] ++ lib.optionals isDevelopment [
-    # Development packages
-    poetry
-    ruff
   ];
 
   shell' = with pkgs; lib.optionalString isDevelopment ''
@@ -135,7 +131,7 @@ let
 
     # Development environment variables
     export PYTHONNOUSERSITE=1
-    export TZ="UTC"
+    export TZ=UTC
 
     if [ -f .env ]; then
       echo "Loading .env file"
