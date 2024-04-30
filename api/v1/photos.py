@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from io import BytesIO
 from typing import Annotated
 from urllib.parse import unquote_plus
@@ -169,6 +169,6 @@ async def report_rss(request: Request):
             type='CDATA',
         )
         fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
-        fe.published(datetime.fromtimestamp(report.timestamp, UTC))
+        fe.published(report.created_at)
 
     return Response(content=fg.rss_str(pretty=True), media_type='application/rss+xml')
