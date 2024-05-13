@@ -3,7 +3,7 @@
 let
   # Currently using nixpkgs-unstable
   # Update with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/7992ec3a816aa3f5cf2b62146c5412c8581943d1.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/af8b9db5c00f1a8e4b83578acc578ff7d823b786.tar.gz") { };
 
   pythonLibs = with pkgs; [
     stdenv.cc.cc.lib
@@ -31,7 +31,7 @@ let
     ruff
     coreutils
     (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
-    redis # TODO: switch to valkey on new version
+    valkey
 
     # Scripts
     # -- Alembic
@@ -97,7 +97,6 @@ let
       rm -rf data/postgres
     '')
     (writeShellScriptBin "dev-logs-postgres" "tail -f data/supervisor/postgres.log")
-    (writeShellScriptBin "dev-logs-redis" "tail -f data/supervisor/redis.log")
 
     # -- Misc
     (writeShellScriptBin "make-version" ''

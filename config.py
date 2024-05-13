@@ -7,7 +7,7 @@ from anyio import Path
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.9.2'
+VERSION = '2.10.0'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -28,7 +28,7 @@ if ENVIRONMENT:
 
 POSTGRES_LOG = os.getenv('POSTGRES_LOG', '0').strip().lower() in ('1', 'true', 'yes')
 POSTGRES_URL = 'postgresql+asyncpg://postgres:postgres@/postgres?host=/tmp/openaedmap-postgres'
-REDIS_URL = os.getenv('REDIS_URL', 'unix:///tmp/openaedmap-redis.sock?protocol=3')
+VALKEY_URL = os.getenv('VALKEY_URL', 'unix:///tmp/openaedmap-valkey.sock?protocol=3')
 
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)

@@ -2,6 +2,7 @@ import logging
 
 import xmltodict
 from authlib.integrations.httpx_client import OAuth2Auth
+from httpx import HTTPStatusError
 from sentry_sdk import trace
 
 from config import CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
@@ -51,13 +52,7 @@ class OpenStreetMap:
             {
                 'osm': {
                     'changeset': {
-                        'tag': [
-                            {
-                                '@k': k,
-                                '@v': v,
-                            }
-                            for k, v in DEFAULT_CHANGESET_TAGS.items()
-                        ]
+                        'tag': [{'@k': k, '@v': v} for k, v in DEFAULT_CHANGESET_TAGS.items()],
                     }
                 }
             }
@@ -86,6 +81,6 @@ class OpenStreetMap:
         r.raise_for_status()
 
         if not upload_resp.is_success:
-            raise Exception(f'Upload failed ({upload_resp.status_code}): {upload_resp.text}')
+            raise HTTPStatusError(f'Upload failed ({upload_resp.status_code}): {upload_resp.text}')
 
         return changeset_id
