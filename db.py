@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from config import POSTGRES_LOG, POSTGRES_URL, REDIS_URL
+from config import POSTGRES_LOG, POSTGRES_URL, VALKEY_URL
 from utils import JSON_DECODE, JSON_ENCODE
 
 _db_engine = create_async_engine(
@@ -45,10 +45,10 @@ async def db_write():
         await session.commit()
 
 
-_redis_pool = ConnectionPool().from_url(REDIS_URL)
+_redis_pool = ConnectionPool().from_url(VALKEY_URL)
 
 
 @asynccontextmanager
-async def redis():
+async def valkey():
     async with Redis(connection_pool=_redis_pool) as r:
         yield r

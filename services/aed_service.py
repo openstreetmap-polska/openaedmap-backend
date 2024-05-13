@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Iterable, Sequence
-from itertools import batched
 from operator import attrgetter, itemgetter
 from time import time
 from typing import NoReturn
@@ -141,22 +140,24 @@ class AEDService:
 
 @trace
 async def _assign_country_codes(aeds: Sequence[AED]) -> None:
-    aed_ids: set[int] = set(map(attrgetter('id'), aeds))
+    if not aeds:
+        return
+
+    ids: set[int] = set(map(attrgetter('id'), aeds))
 
     async with db_write() as session:
-        for batch in batched(aed_ids, 10_000):
-            stmt = (
-                update(AED)
-                .where(AED.id.in_(batch))
-                .values(
-                    {
-                        AED.country_codes: select(array_agg(Country.code))
-                        .where(func.ST_Intersects(Country.geometry, AED.position))
-                        .scalar_subquery()
-                    }
-                )
+        stmt = (
+            update(AED)
+            .where(AED.id.in_(text(','.join(str(id) for id in ids))))
+            .values(
+                {
+                    AED.country_codes: select(array_agg(Country.code))
+                    .where(func.ST_Intersects(Country.geometry, AED.position))
+                    .scalar_subquery()
+                }
             )
-            await session.execute(stmt)
+        )
+        await session.execute(stmt)
 
 
 @trace
@@ -261,8 +262,8 @@ async def _update_db_diffs(last_update: float) -> None:
             )
             await session.execute(stmt)
 
-        for batch in batched(remove_ids, 10_000):
-            stmt = delete(AED).where(AED.id.in_(batch))
+        if remove_ids:
+            stmt = delete(AED).where(AED.id.in_(text(','.join(str(id) for id in remove_ids))))
             await session.execute(stmt)
 
     await StateService.set('aed', {'update_timestamp': data_timestamp, 'version': 3})

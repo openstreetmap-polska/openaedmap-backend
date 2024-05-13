@@ -7,11 +7,11 @@ from datetime import timedelta
 from anyio import create_task_group
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette_compress import CompressMiddleware
 
 from json_response import CustomJSONResponse
 from middlewares.cache_control_middleware import CacheControlMiddleware
 from middlewares.cache_response_middleware import CacheResponseMiddleware
-from middlewares.compress_middleware import CompressMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService

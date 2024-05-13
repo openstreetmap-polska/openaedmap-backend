@@ -7,7 +7,7 @@ from starlette.datastructures import URL, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from zstandard import ZstdCompressor, ZstdDecompressor
 
-from db import redis
+from db import valkey
 from middlewares.cache_control_middleware import make_cache_control, parse_cache_control
 from models.cached_response import CachedResponse
 
@@ -154,7 +154,7 @@ class CachingResponder:
 async def _get_cached_response(url: URL) -> CachedResponse | None:
     key = f'cache:{url.path}:{url.query}'
 
-    async with redis() as conn:
+    async with valkey() as conn:
         value: bytes | None = await conn.get(key)
 
     if value is None:
@@ -172,5 +172,5 @@ async def _set_cached_response(url: URL, cached: CachedResponse) -> None:
 
     logging.debug('Caching response for %r', key)
 
-    async with redis() as conn:
+    async with valkey() as conn:
         await conn.set(key, value, ex=ttl)
