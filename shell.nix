@@ -1,9 +1,8 @@
 { isDevelopment ? true }:
 
 let
-  # Currently using nixpkgs-unstable
-  # Update with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/af8b9db5c00f1a8e4b83578acc578ff7d823b786.tar.gz") { };
+  # Update packages with `nixpkgs-update` command
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/14de0380da76de3f4cd662a9ef2352eed0c95b7d.tar.gz") { };
 
   pythonLibs = with pkgs; [
     stdenv.cc.cc.lib
@@ -11,19 +10,17 @@ let
     libxml2.out
     zlib.out
   ];
-
-  # Override LD_LIBRARY_PATH to load Python libraries
-  wrappedPython = with pkgs; symlinkJoin {
+  wrappedPython = with pkgs; (symlinkJoin {
     name = "python";
     paths = [
-      # Enable Python optimizations when in production
+      # Enable compiler optimizations when in production
       (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
     ];
     buildInputs = [ makeWrapper ];
     postBuild = ''
       wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
     '';
-  };
+  });
 
   packages' = with pkgs; [
     wrappedPython
@@ -57,8 +54,9 @@ let
       if [ ! -f data/postgres/PG_VERSION ]; then
         initdb -D data/postgres \
           --no-instructions \
-          --locale=C.UTF-8 \
-          --encoding=UTF8 \
+          --locale-provider=icu \
+          --icu-locale=und \
+          --no-locale \
           --text-search-config=pg_catalog.simple \
           --auth=password \
           --username=postgres \
@@ -70,7 +68,18 @@ let
       echo "Supervisor started"
 
       echo "Waiting for Postgres to start..."
-      while ! pg_isready -q -h /tmp/openaedmap-postgres -t 10; do sleep 0.1; done
+      time_start=$(date +%s)
+      while ! pg_isready -q -h /tmp/openaedmap-postgres; do
+        elapsed=$(($(date +%s) - $time_start))
+        if [ $elapsed -gt 10 ]; then
+          tail -n 15 data/supervisor/supervisord.log data/supervisor/postgres.log
+          echo "Postgres startup timeout, see above logs for details"
+          dev-stop
+          exit 1
+        fi
+        sleep 0.1
+      done
+
       echo "Postgres started, running migrations"
       alembic-upgrade
     '')
@@ -142,7 +151,7 @@ let
     make-version
   '';
 in
-pkgs.mkShell {
+pkgs.mkShellNoCC {
   buildInputs = packages';
   shellHook = shell';
 }
