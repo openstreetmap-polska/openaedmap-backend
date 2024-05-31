@@ -7,24 +7,13 @@ from anyio import Path
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.10.0'
+VERSION = '2.10.1'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
 USER_AGENT = f'{NAME}/{VERSION} (+{WEBSITE})'
-ENVIRONMENT = os.getenv('ENVIRONMENT', None)
+ENVIRONMENT = os.getenv('ENVIRONMENT')
 LOG_LEVEL = 'DEBUG'
-
-if ENVIRONMENT:
-    sentry_sdk.init(
-        dsn='https://40b1753c3f72721489ca0bca38bb4566@sentry.monicz.dev/3',
-        release=VERSION,
-        environment=ENVIRONMENT,
-        enable_tracing=True,
-        traces_sample_rate=0.2,
-        trace_propagation_targets=None,
-        profiles_sample_rate=0.2,
-    )
 
 POSTGRES_LOG = os.getenv('POSTGRES_LOG', '0').strip().lower() in ('1', 'true', 'yes')
 POSTGRES_URL = 'postgresql+asyncpg://postgres:postgres@/postgres?host=/tmp/openaedmap-postgres'
@@ -96,7 +85,7 @@ dictConfig(
             'root': {'handlers': ['default'], 'level': LOG_LEVEL},
             **{
                 # reduce logging verbosity of some modules
-                module: {'handlers': ['default'], 'level': 'INFO'}
+                module: {'handlers': [], 'level': 'INFO'}
                 for module in (
                     'hpack',
                     'httpx',
@@ -105,6 +94,26 @@ dictConfig(
                     'PIL',
                 )
             },
+            **{
+                # conditional database logging
+                module: {'handlers': [], 'level': 'INFO'}
+                for module in (
+                    'sqlalchemy.engine',
+                    'sqlalchemy.pool',
+                )
+                if POSTGRES_LOG
+            },
         },
     }
 )
+
+if SENTRY_DSN := os.getenv('SENTRY_DSN'):
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        release=VERSION,
+        environment=ENVIRONMENT,
+        enable_tracing=True,
+        traces_sample_rate=0.2,
+        trace_propagation_targets=None,
+        profiles_sample_rate=0.2,
+    )
