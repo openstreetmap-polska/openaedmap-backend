@@ -7,7 +7,7 @@ import numpy as np
 from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span, trace
-from shapely import get_coordinates, points, set_coordinates
+from shapely import get_coordinates, points, set_coordinates, simplify
 
 from config import (
     DEFAULT_CACHE_MAX_AGE,
@@ -109,7 +109,7 @@ def _mvt_encode(bbox: BBox, layers: Sequence[dict]) -> bytes:
 @trace
 async def _get_tile_country(z: int, bbox: BBox) -> bytes:
     countries = await CountryService.get_intersecting(bbox)
-    country_count_map: dict[str, str] = {}
+    country_count_map: dict[str, tuple[int, str]] = {}
 
     with start_span(description='Counting AEDs'):
 
@@ -121,8 +121,8 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
             for country in countries:
                 tg.start_soon(count_task, country)
 
-    simplify_tol = 0.5 / 2**z if z < TILE_MAX_Z else None
-    geometries = (country.geometry.simplify(simplify_tol, preserve_topology=False) for country in countries)
+    simplify_tol = 0.5 / 2**z
+    geometries = (simplify(country.geometry, simplify_tol, preserve_topology=False) for country in countries)
 
     return _mvt_encode(
         bbox,

@@ -199,6 +199,9 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/dotenv,python,visualstudiocode,direnv
 
+# Python version lock
+.python-version
+
 data/*
 cert/*
 

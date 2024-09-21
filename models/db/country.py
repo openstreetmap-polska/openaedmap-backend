@@ -1,5 +1,4 @@
-from asyncpg import Polygon
-from shapely import MultiPolygon, Point
+from shapely import MultiPolygon, Point, Polygon
 from sqlalchemy import Index, Unicode
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column

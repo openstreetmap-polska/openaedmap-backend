@@ -1,4 +1,5 @@
-from typing import NamedTuple, Self
+from collections.abc import Collection
+from typing import NamedTuple, cast
 
 import numpy as np
 from shapely import Point, get_coordinates, points
@@ -9,7 +10,7 @@ class BBox(NamedTuple):
     p1: Point
     p2: Point
 
-    def extend(self, percentage: float) -> Self:
+    def extend(self, percentage: float) -> 'BBox':
         p1_coords = get_coordinates(self.p1)[0]
         p2_coords = get_coordinates(self.p2)[0]
 
@@ -19,11 +20,11 @@ class BBox(NamedTuple):
         p1_coords = np.clip(p1_coords - deltas, [-180, -90], [180, 90])
         p2_coords = np.clip(p2_coords + deltas, [-180, -90], [180, 90])
 
-        p1, p2 = points((p1_coords, p2_coords))
+        p1, p2 = cast(Collection[Point], points((p1_coords, p2_coords)))
         return BBox(p1, p2)
 
     @classmethod
-    def from_tuple(cls, bbox: tuple[float, float, float, float]) -> Self:
+    def from_tuple(cls, bbox: tuple[float, float, float, float]) -> 'BBox':
         p1, p2 = points(((bbox[0], bbox[1]), (bbox[2], bbox[3])))
         return cls(p1, p2)
 
@@ -58,7 +59,7 @@ class BBox(NamedTuple):
         all_coords = np.concatenate((bottom_edge, right_edge, top_edge[::-1], left_edge[::-1]))
         return Polygon(all_coords)
 
-    def correct_for_dateline(self) -> tuple[Self, ...]:
+    def correct_for_dateline(self) -> tuple['BBox', ...]:
         if self.p1.x > self.p2.x:
             b1_p1 = self.p1
             b2_p2 = self.p2

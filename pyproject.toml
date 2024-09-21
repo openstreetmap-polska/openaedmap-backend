@@ -1,47 +1,48 @@
-[tool.poetry]
-authors = ["Your Name <you@example.com>"]
-description = ""
+[project]
+dependencies = [
+  "aiohttp[speedups]",
+  "alembic",
+  "anyio",
+  "asyncache",
+  "beautifulsoup4[charset-normalizer,lxml]",
+  "cachetools",
+  "certifi",
+  "fastapi",
+  "feedgen",
+  "gunicorn",
+  "jinja2",
+  "mapbox-vector-tile",
+  "msgspec",
+  "numpy",
+  "pillow",
+  "pyinstrument",
+  "pyproj",
+  "python-magic",
+  "python-multipart",
+  "pytz",
+  "redis[hiredis]",
+  "scikit-learn",
+  "sentry-sdk[fastapi,aiohttp,sqlalchemy,pure_eval]",
+  "shapely",
+  "sqlalchemy[postgresql-asyncpg]",
+  "starlette-compress",
+  "supervisor",
+  "tzfpy",
+  "uvicorn[standard]",
+  "xmltodict",
+  "zstandard",
+]
 name = "openaedmap-backend"
-readme = "README.md"
+requires-python = "~=3.12"
 version = "0.0.0"
 
-[tool.poetry.dependencies]
-alembic = "^1.13.1"
-anyio = "^4.2.0"
-asyncache = "<1"
-authlib = "^1.3.0"
-beautifulsoup4 = {extras = ["charset-normalizer", "lxml"], version = "^4.12.3"}
-cachetools = "^5.3.2"
-fastapi = "<0.111"
-feedgen = "^1.0.0"
-gunicorn = "*"
-httpx = {extras = ["brotli", "http2"], version = "<1"}
-jinja2 = "^3.1.2"
-mapbox-vector-tile = "^2.0.1"
-msgspec = "<1"
-numpy = "^1.26.3"
-pillow = "^10.2.0"
-pyinstrument = "^4.6.1"
-pyproj = "^3.6.1"
-python = "^3.12"
-python-magic = "<1"
-python-multipart = "<1"
-pytz = "*"
-redis = {extras = ["hiredis"], version = "^5.0.3"}
-scikit-learn = "^1.3.2"
-sentry-sdk = {extras = ["fastapi", "httpx", "sqlalchemy", "pure_eval"], version = "^1.44.0"}
-shapely = "^2.0.2"
-sqlalchemy = {extras = ["postgresql-asyncpg"], version = "^2.0.29"}
-starlette-compress = "^1.0.1"
-supervisor = "^4.2.5"
-tzfpy = "*"
-uvicorn = {extras = ["standard"], version = "<1"}
-xmltodict = "<1"
-zstandard = "<1"
+[tool.uv]
+package = false
+python-downloads = "never"
+python-preference = "only-system"
 
-[build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core"]
+[tool.setuptools]
+packages = ["."]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -78,66 +79,66 @@ target-version = "py312"
 ignore = [
   "ARG001", # unused-function-argument
   "ARG002", # unused-method-argument
-  "TRY003", # raise-vanilla-args
-  "SIM108", # if-else-block-instead-of-if-exp
-  "W191", # tab-indentation
-  "E111", # indentation-with-invalid-multiple
-  "E114", # indentation-with-invalid-multiple-comment
-  "E117", # over-indented
-  "E501", # line-too-long
-  "D206", # indent-with-spaces
-  "D300", # triple-single-quotes
-  "Q000", # bad-quotes-inline-string
-  "Q001", # bad-quotes-multiline-string
-  "Q002", # bad-quotes-docstring
-  "Q003", # avoidable-escaped-quote
   "COM812", # missing-trailing-comma
   "COM819", # prohibited-trailing-comma
+  "D206",   # indent-with-spaces
+  "D300",   # triple-single-quotes
+  "E111",   # indentation-with-invalid-multiple
+  "E114",   # indentation-with-invalid-multiple-comment
+  "E117",   # over-indented
+  "E501",   # line-too-long
   "ISC001", # single-line-implicit-string-concatenation
   "ISC002", # multi-line-implicit-string-concatenation
+  "Q000",   # bad-quotes-inline-string
+  "Q001",   # bad-quotes-multiline-string
+  "Q002",   # bad-quotes-docstring
+  "Q003",   # avoidable-escaped-quote
+  "SIM108", # if-else-block-instead-of-if-exp
+  "TRY003", # raise-vanilla-args
+  "W191",   # tab-indentation
 ]
 # see https://docs.astral.sh/ruff/rules/ for rules documentation
 select = [
-  "A", # flake8-builtins
-  "ARG", # flake8-unused-arguments
+  "A",     # flake8-builtins
+  "ARG",   # flake8-unused-arguments
   "ASYNC", # flake8-async
-  "B", # flake8-bugbear
-  "C4", # flake8-comprehensions
-  "DTZ", # flake8-datetimez
-  "E4", # pycodestyle
+  "B",     # flake8-bugbear
+  "C4",    # flake8-comprehensions
+  "DTZ",   # flake8-datetimez
+  "E4",    # pycodestyle
   "E7",
   "E9",
-  "F", # pyflakes
-  "FA", # flake8-future-annotations
-  "FLY", # flynt  # "FURB", # refurb
-  "G", # flake8-logging-format
-  "I", # isort
-  "ICN", # flake8-import-conventions
-  "INT", # flake8-gettext
-  "ISC", # flake8-implicit-str-concat
-  "LOG", # flake8-logging
-  "N", # pep8-naming
-  "NPY", # numpy
-  "Q", # flake8-quotes
-  "PERF", # perflint
-  "PGH", # pygrep-hooks
-  "PIE", # flake8-pie
-  "PT", # flake8-pytest-style
-  "PTH", # flake8-use-pathlib
-  "PYI", # flake8-pyi
-  "RSE", # flake8-raise
-  "RUF", # ruff
-  "S", # flake8-bandit
-  "SIM", # flake8-simplify
-  "SLF", # flake8-self
-  "SLOT", # flake8-slots
-  "T10", # flake8-debugger
-  "T20", # flake8-print
-  "TID", # flake8-tidy-imports
-  "TRY", # tryceratops
-  "UP", # pyupgrade
+  "F",     # pyflakes
+  "FA",    # flake8-future-annotations
+  "FLY",   # flynt  # "FURB", # refurb
+  "G",     # flake8-logging-format
+  "I",     # isort
+  "ICN",   # flake8-import-conventions
+  "INT",   # flake8-gettext
+  "ISC",   # flake8-implicit-str-concat
+  "LOG",   # flake8-logging
+  "N",     # pep8-naming
+  "NPY",   # numpy
+  "PERF",  # perflint
+  "PGH",   # pygrep-hooks
+  "PIE",   # flake8-pie
+  "PT",    # flake8-pytest-style
+  "PTH",   # flake8-use-pathlib
+  "PYI",   # flake8-pyi
+  "Q",     # flake8-quotes
+  "RSE",   # flake8-raise
+  "RUF",   # ruff
+  "S",     # flake8-bandit
+  "SIM",   # flake8-simplify
+  "SLF",   # flake8-self
+  "SLOT",  # flake8-slots
+  "T10",   # flake8-debugger
+  "T20",   # flake8-print
+  "TID",   # flake8-tidy-imports
+  "TRY",   # tryceratops
+  "UP",    # pyupgrade
   "W6",
-  "YTT", # flake8-2020
+  "YTT",   # flake8-2020
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -160,18 +161,12 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [tool.ruff.lint.flake8-builtins]
-builtins-ignorelist = ["id", "open", "type", "filter", "format"]
-
-[tool.ruff.lint.flake8-gettext]
-extend-function-names = ["pgettext", "npgettext"]
+builtins-ignorelist = ["filter", "format", "id", "open", "type"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
 inline-quotes = "single"
 multiline-quotes = "double"
-
-[tool.ruff.lint.pep8-naming]
-extend-ignore-names = ["ET"]
 
 [tool.ruff.lint.pylint]
 max-args = 10

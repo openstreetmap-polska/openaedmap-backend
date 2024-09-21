@@ -28,7 +28,7 @@ class PhotoService:
     @trace
     async def upload(node_id: int, user_id: int, file: UploadFile) -> Photo:
         img = Image.open(file.file)
-        img = ImageOps.exif_transpose(img)
+        ImageOps.exif_transpose(img, in_place=True)
         img = _resize_image(img)
         img_bytes = _optimize_quality(img)
 
@@ -46,14 +46,13 @@ class PhotoService:
 @trace
 def _resize_image(img: Image.Image) -> Image.Image:
     width, height = img.size
-
     if width * height <= IMAGE_LIMIT_PIXELS:
         return img
 
     ratio = (IMAGE_LIMIT_PIXELS / (width * height)) ** 0.5
     new_width = int(width * ratio)
     new_height = int(height * ratio)
-    return img.resize((new_width, new_height), Image.LANCZOS)
+    return img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
 
 @trace
