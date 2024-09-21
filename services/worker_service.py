@@ -3,7 +3,7 @@ import os
 from typing import Literal
 
 import anyio
-from anyio import Path
+from anyio import AsyncFile, Path
 
 from config import DATA_DIR
 from utils import retry_exponential
@@ -12,12 +12,12 @@ _PID_PATH = DATA_DIR / 'worker.pid'
 _STATE_PATH = DATA_DIR / 'worker.state'
 _LOCK_PATH = DATA_DIR / 'worker.lock'
 
-
 WorkerState = Literal['startup', 'running']
 
 
 class WorkerService:
     is_primary: bool
+    _lock_file: AsyncFile[str]
 
     @retry_exponential(10)
     @staticmethod
@@ -38,7 +38,6 @@ class WorkerService:
                     pid = await _PID_PATH.read_text()
                     if pid and await Path(f'/proc/{pid}').is_dir():
                         break
-
                 await anyio.sleep(0.1)
 
         return self
@@ -50,8 +49,8 @@ class WorkerService:
 
     @retry_exponential(10)
     async def get_state(self) -> WorkerState:
-        return await _STATE_PATH.read_text()
+        return await _STATE_PATH.read_text()  # pyright: ignore[reportReturnType]
 
     async def wait_for_state(self, state: WorkerState) -> None:
-        while await self.get_state() != state:
+        while await self.get_state() != state:  # noqa: ASYNC110
             await anyio.sleep(0.1)

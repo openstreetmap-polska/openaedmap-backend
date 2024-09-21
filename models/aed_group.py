@@ -6,7 +6,7 @@ from shapely import Point
 
 class AEDGroup(NamedTuple):
     position: Point
-    count: int
+    count: int  # pyright: ignore[reportIncompatibleMethodOverride]
     access: str
 
     @staticmethod

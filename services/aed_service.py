@@ -1,8 +1,8 @@
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from operator import attrgetter, itemgetter
 from time import time
-from typing import NoReturn
+from typing import NoReturn, cast
 
 import anyio
 import numpy as np
@@ -12,7 +12,7 @@ from sentry_sdk import start_span, start_transaction, trace
 from shapely import Point, get_coordinates, points
 from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import any_, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import array_agg, insert
 
 from config import AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
@@ -56,8 +56,12 @@ class AEDService:
     @trace
     async def count_by_country_code(country_code: str) -> int:
         async with db_read() as session:
-            stmt = select(func.count()).select_from(select(text('1')).where(AED.country_codes.any(country_code)))
-            return await session.scalar(stmt)
+            stmt = select(func.count()).select_from(
+                select(text('1'))  #
+                .where(any_(AED.country_codes) == country_code)
+                .subquery()
+            )
+            return (await session.execute(stmt)).scalar_one()
 
     @staticmethod
     @trace
@@ -76,7 +80,7 @@ class AEDService:
     @trace
     async def get_by_country_code(cls, country_code: str) -> Sequence[AED]:
         async with db_read() as session:
-            stmt = select(AED).where(AED.country_codes.any(country_code))
+            stmt = select(AED).where(any_(AED.country_codes) == country_code)
             return (await session.scalars(stmt)).all()
 
     @classmethod
@@ -107,10 +111,10 @@ class AEDService:
         with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
             model = Birch(threshold=group_eps, n_clusters=None, compute_labels=False, copy=False)
             model.fit(fit_positions)
-            center_points = points(model.subcluster_centers_)
+            center_points = cast(Collection[Point], points(model.subcluster_centers_))
 
         with start_span(description=f'Processing {len(aeds)} samples'):
-            cluster_groups: tuple[list[AED]] = tuple([] for _ in range(len(center_points)))
+            cluster_groups: tuple[list[AED], ...] = tuple([] for _ in range(len(center_points)))
             result: list[AED | AEDGroup] = []
 
             with start_span(description='Clustering'):
@@ -139,7 +143,7 @@ class AEDService:
 
 
 @trace
-async def _assign_country_codes(aeds: Sequence[AED]) -> None:
+async def _assign_country_codes(aeds: Collection[AED]) -> None:
     if not aeds:
         return
 

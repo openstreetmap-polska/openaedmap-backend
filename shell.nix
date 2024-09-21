@@ -2,7 +2,7 @@
 
 let
   # Update packages with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/4284c2b73c8bce4b46a6adf23e16d9e2ec8da4bb.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/658e7223191d2598641d50ee4e898126768fe847.tar.gz") { };
 
   pythonLibs = with pkgs; [
     stdenv.cc.cc.lib
@@ -10,7 +10,7 @@ let
     libxml2.out
     zlib.out
   ];
-  wrappedPython = with pkgs; (symlinkJoin {
+  python' = with pkgs; (symlinkJoin {
     name = "python";
     paths = [
       # Enable compiler optimizations when in production
@@ -23,8 +23,8 @@ let
   });
 
   packages' = with pkgs; [
-    wrappedPython
-    poetry
+    python'
+    uv
     ruff
     coreutils
     (postgresql_16_jit.withPackages (ps: [ ps.postgis ]))
@@ -113,7 +113,11 @@ let
     '')
     (writeShellScriptBin "nixpkgs-update" ''
       set -e
-      hash=$(git ls-remote https://github.com/NixOS/nixpkgs nixpkgs-unstable | cut -f 1)
+      hash=$(
+        curl --silent --location \
+        https://prometheus.nixos.org/api/v1/query \
+        -d "query=channel_revision{channel=\"nixpkgs-unstable\"}" | \
+        grep --only-matching --extended-regexp "[0-9a-f]{40}")
       sed -i -E "s|/nixpkgs/archive/[0-9a-f]{40}\.tar\.gz|/nixpkgs/archive/$hash.tar.gz|" shell.nix
       echo "Nixpkgs updated to $hash"
     '')
@@ -127,12 +131,11 @@ let
   shell' = with pkgs; lib.optionalString isDevelopment ''
     current_python=$(readlink -e .venv/bin/python || echo "")
     current_python=''${current_python%/bin/*}
-    [ "$current_python" != "${wrappedPython}" ] && rm -r .venv
+    [ "$current_python" != "${python'}" ] && rm -rf .venv/
 
     echo "Installing Python dependencies"
-    export POETRY_VIRTUALENVS_IN_PROJECT=1
-    poetry env use "${wrappedPython}/bin/python"
-    poetry install --no-root --compile
+    echo "${python'}/bin/python" > .python-version
+    uv sync --frozen
 
     echo "Activating Python virtual environment"
     source .venv/bin/activate
@@ -146,6 +149,8 @@ let
       set -o allexport
       source .env set
       set +o allexport
+    else
+      echo "Skipped loading .env file (not found)"
     fi
   '' + lib.optionalString (!isDevelopment) ''
     make-version

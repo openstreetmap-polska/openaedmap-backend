@@ -1,13 +1,13 @@
 from datetime import timedelta
-from io import BytesIO
 from typing import Annotated
 from urllib.parse import unquote_plus
 
 import magic
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from feedgen.feed import FeedGenerator
+from pydantic import SecretStr
 
 from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
 from middlewares.cache_control_middleware import cache_control
@@ -16,29 +16,22 @@ from osm_change import update_node_tags_osm_change
 from services.aed_service import AEDService
 from services.photo_report_service import PhotoReportService
 from services.photo_service import PhotoService
-from utils import JSON_DECODE, get_http_client, get_wikimedia_commons_url
+from utils import JSON_DECODE, get_wikimedia_commons_url, http_get
 
 router = APIRouter(prefix='/photos')
 
 
 async def _fetch_image(url: str) -> tuple[bytes, str]:
     # NOTE: ideally we would verify whether url is not a private resource
-    async with get_http_client() as http:
-        r = await http.get(url)
-        r.raise_for_status()
+    async with http_get(url, allow_redirects=True, raise_for_status=True) as r:
+        # Early detection of unsupported types
+        content_type = r.headers.get('Content-Type')
+        if content_type and content_type not in IMAGE_CONTENT_TYPES:
+            raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
-    # Early detection of unsupported types
-    content_type = r.headers.get('Content-Type')
-    if content_type and content_type not in IMAGE_CONTENT_TYPES:
-        raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
-
-    with BytesIO() as buffer:
-        async for chunk in r.aiter_bytes(chunk_size=1024 * 1024):
-            buffer.write(chunk)
-            if buffer.tell() > IMAGE_REMOTE_MAX_FILE_SIZE:
-                raise HTTPException(500, f'File is too large, max allowed size is {IMAGE_REMOTE_MAX_FILE_SIZE} bytes')
-
-        file = buffer.getvalue()
+        file = await r.content.read(IMAGE_REMOTE_MAX_FILE_SIZE + 1)
+        if len(file) > IMAGE_REMOTE_MAX_FILE_SIZE:
+            raise HTTPException(500, f'File is too large, max allowed size is {IMAGE_REMOTE_MAX_FILE_SIZE} bytes')
 
     # Check if file type is supported
     content_type = magic.from_buffer(file[:2048], mime=True)
@@ -70,17 +63,18 @@ async def proxy_direct(url_encoded: str):
 @cache_control(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_wikimedia_commons(path_encoded: str):
     meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
+    async with http_get(meta_url, allow_redirects=True, raise_for_status=True) as r:
+        html = await r.text()
 
-    async with get_http_client() as http:
-        r = await http.get(meta_url)
-        r.raise_for_status()
-
-    bs = BeautifulSoup(r.text, 'lxml')
+    bs = BeautifulSoup(html, 'lxml')
     og_image = bs.find('meta', property='og:image')
-    if not og_image:
+    if not isinstance(og_image, Tag):
         return Response('Missing og:image meta tag', 404)
 
     image_url = og_image['content']
+    if not isinstance(image_url, str):
+        return Response('Invalid og:image meta tag (expected str)', 404)
+
     file, content_type = await _fetch_image(image_url)
     return Response(file, media_type=content_type)
 
@@ -92,13 +86,13 @@ async def upload(
     file_license: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     oauth2_credentials: Annotated[str, Form()],
-) -> bool:
+):
     file_license = file_license.upper()
     accept_licenses = ('CC0',)
 
     if file_license not in accept_licenses:
         return Response(f'Unsupported license {file_license!r}, must be one of {accept_licenses}', 400)
-    if file.size <= 0:
+    if file.size is None or file.size <= 0:
         return Response('File must not be empty', 400)
 
     content_type = magic.from_buffer(file.file.read(2048), mime=True)
@@ -107,6 +101,7 @@ async def upload(
 
     try:
         oauth2_credentials_: dict = JSON_DECODE(oauth2_credentials)
+        oauth2_token = SecretStr(oauth2_credentials_['access_token'])
     except Exception:
         return Response('OAuth2 credentials must be a JSON object', 400)
     if 'access_token' not in oauth2_credentials_:
@@ -116,7 +111,7 @@ async def upload(
     if aed is None:
         return Response(f'Node {node_id} not found, perhaps it is not an AED?', 404)
 
-    osm = OpenStreetMap(oauth2_credentials_)
+    osm = OpenStreetMap(oauth2_token)
     osm_user = await osm.get_authorized_user()
     if osm_user is None:
         return Response('OAuth2 credentials are invalid', 401)
@@ -127,6 +122,8 @@ async def upload(
     photo = await PhotoService.upload(node_id, user_id, file)
     photo_url = f'{request.base_url}api/v1/photos/view/{photo.id}.webp'
     node_xml = await osm.get_node_xml(node_id)
+    if node_xml is None:
+        return Response(f'Node {node_id} not found on remote', 404)
 
     osm_change = update_node_tags_osm_change(
         node_xml,

@@ -36,15 +36,17 @@ class CacheResponseMiddleware:
 
         url = URL(scope=scope)
         cached = await _get_cached_response(url)
+        maybe_send: Send | None = send
+
         if cached is not None:
             if await _deliver_cached_response(cached, send):
                 # served fresh response
                 return
             else:
                 # served stale response, refresh cache
-                send = None
+                maybe_send = None
 
-        await CachingResponder(self.app, url)(scope, receive, send)
+        await CachingResponder(self.app, url)(scope, receive, maybe_send)
 
 
 async def _deliver_cached_response(cached: CachedResponse, send: Send) -> bool:
