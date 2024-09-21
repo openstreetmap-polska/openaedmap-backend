@@ -1,4 +1,5 @@
 from datetime import timedelta
+from io import BytesIO
 from typing import Annotated
 from urllib.parse import unquote_plus
 
@@ -29,9 +30,14 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
         if content_type and content_type not in IMAGE_CONTENT_TYPES:
             raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
 
-        file = await r.content.read(IMAGE_REMOTE_MAX_FILE_SIZE + 1)
-        if len(file) > IMAGE_REMOTE_MAX_FILE_SIZE:
-            raise HTTPException(500, f'File is too large, max allowed size is {IMAGE_REMOTE_MAX_FILE_SIZE} bytes')
+        with BytesIO() as buffer:
+            async for chunk, _ in r.content.iter_chunks():
+                buffer.write(chunk)
+                if buffer.tell() > IMAGE_REMOTE_MAX_FILE_SIZE:
+                    raise HTTPException(
+                        500, f'File is too large, max allowed size is {IMAGE_REMOTE_MAX_FILE_SIZE} bytes'
+                    )
+            file = buffer.getvalue()
 
     # Check if file type is supported
     content_type = magic.from_buffer(file[:2048], mime=True)
