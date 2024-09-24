@@ -15,7 +15,7 @@ from utils import get_wikimedia_commons_url
 
 router = APIRouter()
 
-photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
+_photo_id_re = re.compile(r'view/(?P<id>\S+)\.')
 
 
 def _get_timezone(x: float, y: float) -> tuple[str | None, str | None]:
@@ -38,7 +38,7 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
 
     if (
         image_url
-        and (photo_id_match := photo_id_re.search(image_url))
+        and (photo_id_match := _photo_id_re.search(image_url))
         and (photo_id := photo_id_match.group('id'))
         and (await PhotoService.get_by_id(photo_id)) is not None
     ):
@@ -55,7 +55,7 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
             '@photo_source': image_url,
         }
 
-    wikimedia_commons: str = tags.get('wikimedia_commons', '')
+    wikimedia_commons: str = tags.get('wikimedia_commons', '').partition(';')[0]
 
     if wikimedia_commons:
         return {

@@ -7,7 +7,7 @@ from anyio import Path
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.11.0'
+VERSION = '2.11.1'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
