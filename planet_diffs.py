@@ -12,6 +12,9 @@ from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_UR
 from utils import http_get, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
+_action_open_re = re.compile(r'<(create|modify|delete)>')
+_action_close_re = re.compile(r'</(create|modify|delete)>')
+
 
 @trace
 async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
@@ -98,6 +101,6 @@ def _format_actions(xml: str) -> str:
     # <create> -> <action type="create">
     # </create> -> </action>
     # etc.
-    xml = re.sub(r'<(create|modify|delete)>', r'<action type="\1">', xml)
-    xml = re.sub(r'</(create|modify|delete)>', r'</action>', xml)
+    xml = _action_open_re.sub(r'<action type="\1">', xml)
+    xml = _action_close_re.sub(r'</action>', xml)
     return xml
