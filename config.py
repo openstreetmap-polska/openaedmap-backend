@@ -1,13 +1,13 @@
 import os
 from datetime import timedelta
 from logging.config import dictConfig
+from pathlib import Path
 
 import sentry_sdk
-from anyio import Path
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.11.1'
+VERSION = '2.12.0'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 

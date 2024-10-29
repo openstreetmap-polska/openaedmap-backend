@@ -1,6 +1,6 @@
 import secrets
+from pathlib import Path
 
-from anyio import Path
 from sqlalchemy import BigInteger, Unicode
 from sqlalchemy.orm import Mapped, mapped_column
 
