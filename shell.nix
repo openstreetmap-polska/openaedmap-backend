@@ -137,7 +137,8 @@ let
     [ "$current_python" != "${python'}" ] && rm -rf .venv/
 
     echo "Installing Python dependencies"
-    echo "${python'}/bin/python" > .python-version
+    export UV_COMPILE_BYTECODE=1
+    export UV_PYTHON="${python'}/bin/python"
     uv sync --frozen
 
     echo "Activating Python virtual environment"
