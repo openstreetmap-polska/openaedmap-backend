@@ -53,6 +53,7 @@ jobs:
 
       - name: Build container image
         run: |
+          nix-shell --pure --run true
           echo "IMAGE_PATH=$(nix-build --no-out-link)" >> $GITHUB_ENV
 
       - name: Export Nix store cache
