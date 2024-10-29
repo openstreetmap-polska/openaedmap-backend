@@ -55,13 +55,26 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
             '@photo_source': image_url,
         }
 
-    wikimedia_commons: str = tags.get('wikimedia_commons', '').partition(';')[0]
-
-    if wikimedia_commons:
+    if (
+        (wikimedia_commons := tags.get('wikimedia_commons', '').partition(';')[0])  #
+        and wikimedia_commons[:4].casefold() != 'http'
+    ):
         return {
             '@photo_id': None,
             '@photo_url': f'/api/v1/photos/proxy/wikimedia-commons/{quote_plus(wikimedia_commons)}',
             '@photo_source': get_wikimedia_commons_url(wikimedia_commons),
+        }
+
+    if (
+        (panoramax := tags.get('panoramax', '').partition(';')[0])  #
+        and panoramax[:4].casefold() != 'http'
+    ):
+        photo_url = f'https://api.panoramax.xyz/api/pictures/{panoramax}/sd.jpg'
+        photo_source = f'https://api.panoramax.xyz/#focus=pic&pic={panoramax}'
+        return {
+            '@photo_id': None,
+            '@photo_url': f'/api/v1/photos/proxy/direct/{quote_plus(photo_url)}',
+            '@photo_source': photo_source,
         }
 
     return {
