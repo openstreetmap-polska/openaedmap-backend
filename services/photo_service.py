@@ -19,7 +19,7 @@ class PhotoService:
 
         if photo is None:
             return None
-        if check_file and (not await photo.file_path.is_file()):
+        if check_file and (not photo.file_path.is_file()):
             return None
 
         return photo
@@ -39,7 +39,7 @@ class PhotoService:
             )
             session.add(photo)
 
-        await photo.file_path.write_bytes(img_bytes)
+        photo.file_path.write_bytes(img_bytes)
         return photo
 
 

@@ -2,7 +2,7 @@
 
 let
   # Update packages with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/658e7223191d2598641d50ee4e898126768fe847.tar.gz") { };
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/0fcb98acb6633445764dafe180e6833eb0f95208.tar.gz") { };
 
   pythonLibs = with pkgs; [
     stdenv.cc.cc.lib
@@ -129,6 +129,9 @@ let
   ];
 
   shell' = with pkgs; lib.optionalString isDevelopment ''
+    export PYTHONNOUSERSITE=1
+    export TZ=UTC
+
     current_python=$(readlink -e .venv/bin/python || echo "")
     current_python=''${current_python%/bin/*}
     [ "$current_python" != "${python'}" ] && rm -rf .venv/
@@ -139,10 +142,6 @@ let
 
     echo "Activating Python virtual environment"
     source .venv/bin/activate
-
-    # Development environment variables
-    export PYTHONNOUSERSITE=1
-    export TZ=UTC
 
     if [ -f .env ]; then
       echo "Loading .env file"
@@ -156,7 +155,7 @@ let
     make-version
   '';
 in
-pkgs.mkShellNoCC {
+pkgs.mkShell {
   buildInputs = packages';
   shellHook = shell';
 }

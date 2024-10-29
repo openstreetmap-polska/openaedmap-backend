@@ -1,9 +1,9 @@
 import fcntl
 import os
-from typing import Literal
+from pathlib import Path
+from typing import Literal, cast
 
 import anyio
-from anyio import AsyncFile, Path
 
 from config import DATA_DIR
 from utils import retry_exponential
@@ -17,26 +17,26 @@ WorkerState = Literal['startup', 'running']
 
 class WorkerService:
     is_primary: bool
-    _lock_file: AsyncFile[str]
+    _lock_fd: int
 
     @retry_exponential(10)
     @staticmethod
     async def init() -> 'WorkerService':
         self = WorkerService()
-        self._lock_file = await anyio.open_file(_LOCK_PATH, 'w')
+        self._lock_fd = os.open(_LOCK_PATH, os.O_RDONLY | os.O_CREAT)
 
         try:
-            fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.is_primary = True
-            await _STATE_PATH.write_text('startup')
-            await _PID_PATH.write_text(str(os.getpid()))
+            _STATE_PATH.write_text('startup')
+            _PID_PATH.write_text(str(os.getpid()))
         except BlockingIOError:
             self.is_primary = False
 
             while True:
-                if await _PID_PATH.is_file() and await _STATE_PATH.is_file():
-                    pid = await _PID_PATH.read_text()
-                    if pid and await Path(f'/proc/{pid}').is_dir():
+                if _PID_PATH.is_file() and _STATE_PATH.is_file():
+                    pid = _PID_PATH.read_text()
+                    if pid and Path(f'/proc/{pid}').is_dir():
                         break
                 await anyio.sleep(0.1)
 
@@ -45,11 +45,11 @@ class WorkerService:
     async def set_state(self, state: WorkerState) -> None:
         if not self.is_primary:
             raise AssertionError('Only the primary worker can set the state')
-        await _STATE_PATH.write_text(state)
+        _STATE_PATH.write_text(state)
 
     @retry_exponential(10)
     async def get_state(self) -> WorkerState:
-        return await _STATE_PATH.read_text()  # pyright: ignore[reportReturnType]
+        return cast(WorkerState, _STATE_PATH.read_text())
 
     async def wait_for_state(self, state: WorkerState) -> None:
         while await self.get_state() != state:  # noqa: ASYNC110
