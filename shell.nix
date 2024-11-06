@@ -22,15 +22,12 @@ let
     '';
   });
 
-  postgres16 = with pkgs; postgresql_16_jit.withPackages (ps: [ ps.postgis ]);
-  postgres17 = with pkgs; postgresql_17_jit.withPackages (ps: [ ps.postgis ]);
-
   packages' = with pkgs; [
     python'
     uv
     ruff
     coreutils
-    postgres17
+    (postgresql_17_jit.withPackages (ps: [ ps.postgis ]))
     valkey
 
     # Scripts
@@ -63,18 +60,6 @@ let
           --text-search-config=pg_catalog.simple \
           --auth=trust \
           --username=postgres
-
-          if [ $(cat data/postgres16/PG_VERSION) = "16" ]; then
-            mkdir -p /tmp/openaedmap-postgres
-            cp data/postgres/pg_hba.conf data/postgres16/pg_hba.conf
-            ${postgres16}/bin/pg_ctl start -o "-c config_file=config/postgres.conf" -D data/postgres16
-            ${postgres16}/bin/pg_dump -h localhost -U postgres -d postgres -F c -Z 3 -f backup.pgdump
-            ${postgres16}/bin/pg_ctl stop -D data/postgres16
-            ${postgres17}/bin/pg_ctl start -o "-c config_file=config/postgres.conf" -D data/postgres
-            ${postgres17}/bin/pg_restore -h localhost -U postgres -d postgres backup.pgdump
-            ${postgres17}/bin/pg_ctl stop -D data/postgres
-            rm backup.pgdump
-          fi
       fi
 
       mkdir -p /tmp/openaedmap-postgres data/supervisor

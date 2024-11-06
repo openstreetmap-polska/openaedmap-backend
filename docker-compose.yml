@@ -28,6 +28,5 @@ services:
       - ${LISTEN:-80}:8000
 
     volumes:
-      - ./data/postgres:/app/data/postgres16
       - ./data/postgres17:/app/data/postgres
       - /mnt/data/${TAG}/photos:/app/data/photos
