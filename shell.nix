@@ -14,11 +14,11 @@ let
     name = "python";
     paths = [
       # Enable compiler optimizations when in production
-      (if isDevelopment then python312 else python312.override { enableOptimizations = true; })
+      (if isDevelopment then python313 else python313.override { enableOptimizations = true; })
     ];
     buildInputs = [ makeWrapper ];
     postBuild = ''
-      wrapProgram "$out/bin/python3.12" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
+      wrapProgram "$out/bin/python3.13" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
     '';
   });
 

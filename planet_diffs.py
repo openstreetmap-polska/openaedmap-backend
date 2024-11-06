@@ -9,7 +9,7 @@ from anyio import create_task_group, fail_after
 from sentry_sdk import start_span, trace
 
 from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
-from utils import http_get, retry_exponential
+from utils import HTTP, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
 _action_open_re = re.compile(r'<(create|modify|delete)>')
@@ -42,10 +42,10 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
             @retry_exponential(AED_REBUILD_THRESHOLD)
             async def _get_planet_diff(sequence_number: int) -> None:
                 path = f'{_format_sequence_number(sequence_number)}.osc.gz'
-                async with http_get(f'{PLANET_REPLICA_URL}{path}', allow_redirects=True, raise_for_status=True) as r:
-                    content = await r.read()
+                r = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
+                r.raise_for_status()
 
-                xml = gzip.decompress(content).decode()
+                xml = gzip.decompress(r.content).decode()
                 xml = _format_actions(xml)
                 actions: list[dict] = xmltodict.parse(
                     xml,
@@ -80,10 +80,10 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
 @trace
 async def _get_state(sequence_number: int | None) -> tuple[int, float]:
     path = 'state.txt' if sequence_number is None else f'{_format_sequence_number(sequence_number)}.state.txt'
-    async with http_get(f'{PLANET_REPLICA_URL}{path}', allow_redirects=True, raise_for_status=True) as r:
-        text = await r.text()
+    r = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
+    r.raise_for_status()
 
-    text = text.replace('\\:', ':')
+    text = r.text.replace('\\:', ':')
     sequence_number = int(re.search(r'sequenceNumber=(\d+)', text).group(1))  # pyright: ignore [reportOptionalMemberAccess]
     sequence_date_str = re.search(r'timestamp=(\S+)', text).group(1)  # pyright: ignore [reportOptionalMemberAccess]
     sequence_date = datetime.strptime(sequence_date_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC)

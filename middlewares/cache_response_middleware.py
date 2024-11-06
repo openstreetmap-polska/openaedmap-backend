@@ -154,7 +154,7 @@ class CachingResponder:
 
 @trace
 async def _get_cached_response(url: URL) -> CachedResponse | None:
-    key = f'cache:{url.path}:{url.query}'
+    key = f'cache2:{url.path}:{url.query}'
 
     async with valkey() as conn:
         value: bytes | None = await conn.get(key)
@@ -168,7 +168,7 @@ async def _get_cached_response(url: URL) -> CachedResponse | None:
 
 @trace
 async def _set_cached_response(url: URL, cached: CachedResponse) -> None:
-    key = f'cache:{url.path}:{url.query}'
+    key = f'cache2:{url.path}:{url.query}'
     value = _compress(cached.to_bytes())
     ttl = int((cached.max_age + cached.stale).total_seconds())
 

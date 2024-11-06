@@ -6,7 +6,7 @@ from sentry_sdk import trace
 from starlette import status
 
 from config import CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
-from utils import http_get, http_post, http_put, retry_exponential
+from utils import HTTP, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
 
@@ -21,27 +21,24 @@ class OpenStreetMap:
     @retry_exponential(10)
     @trace
     async def get_authorized_user(self) -> dict | None:
-        async with http_get(
+        r = await HTTP.get(
             f'{OPENSTREETMAP_API_URL}user/details.json',
-            allow_redirects=True,
             headers={'Authorization': f'Bearer {self.access_token.get_secret_value()}'},
-        ) as r:
-            if r.status == status.HTTP_401_UNAUTHORIZED:
-                return None
-            r.raise_for_status()
-            return (await r.json())['user']
+        )
+        if r.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        r.raise_for_status()
+        return r.json()['user']
 
     @retry_exponential(10)
     @trace
     async def get_node_xml(self, node_id: int) -> dict | None:
-        async with http_get(f'{OPENSTREETMAP_API_URL}node/{node_id}', allow_redirects=True) as r:
-            if r.status in (status.HTTP_404_NOT_FOUND, status.HTTP_410_GONE):
-                return None
-            r.raise_for_status()
-            content = await r.read()
-
+        r = await HTTP.get(f'{OPENSTREETMAP_API_URL}node/{node_id}')
+        if r.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_410_GONE):
+            return None
+        r.raise_for_status()
         return xmltodict.parse(
-            content,
+            r.content,
             postprocessor=xmltodict_postprocessor,
             force_list=('tag',),
         )['osm']['node']
@@ -52,35 +49,35 @@ class OpenStreetMap:
             {'osm': {'changeset': {'tag': [{'@k': k, '@v': v} for k, v in DEFAULT_CHANGESET_TAGS.items()]}}}
         )
 
-        async with http_put(
+        r = await HTTP.put(
             f'{OPENSTREETMAP_API_URL}changeset/create',
-            data=changeset,
             headers={
                 'Authorization': f'Bearer {self.access_token.get_secret_value()}',
                 'Content-Type': 'text/xml; charset=utf-8',
             },
-            raise_for_status=True,
-        ) as r:
-            changeset_id = await r.text()
+            content=changeset,
+        )
+        r.raise_for_status()
+        changeset_id = r.text
 
         osm_change = osm_change.replace(CHANGESET_ID_PLACEHOLDER, changeset_id)
         logging.info('Uploading changeset %s', changeset_id)
         logging.info('https://www.openstreetmap.org/changeset/%s', changeset_id)
 
-        await http_post(
+        r = await HTTP.post(
             f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/upload',
-            data=osm_change,
             headers={
                 'Authorization': f'Bearer {self.access_token.get_secret_value()}',
                 'Content-Type': 'text/xml; charset=utf-8',
             },
-            raise_for_status=True,
+            content=osm_change,
         )
+        r.raise_for_status()
 
-        await http_put(
+        r = await HTTP.put(
             f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/close',
             headers={'Authorization': f'Bearer {self.access_token.get_secret_value()}'},
-            raise_for_status=True,
         )
+        r.raise_for_status()
 
         return changeset_id

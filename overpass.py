@@ -1,11 +1,10 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from aiohttp import ClientTimeout
 from sentry_sdk import trace
 
 from config import OVERPASS_API_URL
-from utils import http_post, retry_exponential
+from utils import HTTP, retry_exponential
 
 
 @retry_exponential(None)
@@ -14,14 +13,9 @@ async def query_overpass(query: str, *, timeout: int, must_return: bool = False)
     join = '' if query.startswith('[') else ';'
     query = f'[out:json][timeout:{timeout}]{join}{query}'
 
-    async with http_post(
-        OVERPASS_API_URL,
-        data={'data': query},
-        timeout=ClientTimeout(total=timeout * 2),
-        allow_redirects=True,
-        raise_for_status=True,
-    ) as r:
-        data = await r.json()
+    r = await HTTP.post(OVERPASS_API_URL, data={'data': query}, timeout=timeout * 2)
+    r.raise_for_status()
+    data = r.json()
 
     data_timestamp = (
         datetime.strptime(

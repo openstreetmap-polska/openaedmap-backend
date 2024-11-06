@@ -13,7 +13,7 @@ let
         mkdir -p $out/bin $out/lib
         find "${./.venv/bin}" -type f -executable -exec cp {} $out/bin \;
         sed -i '1s|^#!.*/python|#!/usr/bin/env python|' $out/bin/*
-        cp -r "${./.venv/lib/python3.12/site-packages}"/* $out/lib
+        cp -r "${./.venv/lib/python3.13/site-packages}"/* $out/lib
       '')
     ];
     pathsToLink = [ "/bin" "/lib" ];

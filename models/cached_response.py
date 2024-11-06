@@ -1,11 +1,10 @@
+import pickle
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from msgspec import Struct
 
-from utils import MSGPACK_ENCODE, typed_msgpack_decoder
-
-
-class CachedResponse(Struct, forbid_unknown_fields=True, array_like=True):
+@dataclass(kw_only=True, slots=True)
+class CachedResponse:
     date: datetime
     max_age: timedelta
     stale: timedelta
@@ -14,11 +13,8 @@ class CachedResponse(Struct, forbid_unknown_fields=True, array_like=True):
     content: bytes
 
     def to_bytes(self) -> bytes:
-        return MSGPACK_ENCODE(self)
+        return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
     def from_bytes(cls, buffer: bytes) -> 'CachedResponse':
-        return _decode(buffer)
-
-
-_decode = typed_msgpack_decoder(CachedResponse).decode
+        return pickle.loads(buffer)  # noqa: S301

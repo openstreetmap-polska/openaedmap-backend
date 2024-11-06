@@ -7,7 +7,7 @@ import sentry_sdk
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.12.0'
+VERSION = '2.13.0'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -91,6 +91,7 @@ dictConfig(
                     'httpx',
                     'httpcore',
                     'multipart',
+                    'python_multipart',
                     'PIL',
                 )
             },
