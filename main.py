@@ -7,8 +7,10 @@ from datetime import timedelta
 from anyio import create_task_group
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from starlette_compress import CompressMiddleware
 
+from db import db_write
 from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import CacheControlMiddleware
 from middlewares.cache_response_middleware import CacheResponseMiddleware
@@ -24,6 +26,10 @@ async def lifespan(_):
     worker_state = await WorkerService.init()
 
     if worker_state.is_primary:
+        async with db_write() as session:
+            await session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
+            await session.execute(text('VACUUM ANALYZE'))
+
         async with create_task_group() as tg:
             await tg.start(CountryService.update_db_task)
             await tg.start(AEDService.update_db_task)
