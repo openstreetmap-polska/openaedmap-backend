@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from typing import cast
 
@@ -8,18 +9,18 @@ from zstandard import ZstdDecompressor
 
 from config import COUNTRY_GEOJSON_URL
 from models.osm_country import OSMCountry
-from utils import JSON_DECODE, http_get
+from utils import HTTP
 
 _zstd_decompress = ZstdDecompressor().decompress
 
 
 @trace
 async def get_osm_countries() -> Sequence[OSMCountry]:
-    async with http_get(COUNTRY_GEOJSON_URL, allow_redirects=True, raise_for_status=True) as r:
-        buffer = await r.read()
+    r = await HTTP.get(COUNTRY_GEOJSON_URL)
+    r.raise_for_status()
 
-    buffer = _zstd_decompress(buffer)
-    data: dict = JSON_DECODE(buffer)
+    buffer = _zstd_decompress(r.content)
+    data: dict = json.loads(buffer)
     result = []
 
     for feature in data['features']:

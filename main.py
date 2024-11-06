@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette_compress import CompressMiddleware
 
-from json_response import CustomJSONResponse
+from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import CacheControlMiddleware
 from middlewares.cache_response_middleware import CacheResponseMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
@@ -38,7 +38,7 @@ async def lifespan(_):
         yield
 
 
-app = FastAPI(lifespan=lifespan, default_response_class=CustomJSONResponse)
+app = FastAPI(lifespan=lifespan, default_response_class=JSONResponseUTF8)
 app.add_middleware(CacheControlMiddleware)
 app.add_middleware(CacheResponseMiddleware)
 app.add_middleware(
