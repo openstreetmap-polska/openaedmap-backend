@@ -11,7 +11,7 @@ on:
       tag:
         description: 'Deployment tag'
         required: true
-        type: type
+        type: choice
         default: 'main'
         options:
           - main
