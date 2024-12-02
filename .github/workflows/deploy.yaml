@@ -11,8 +11,11 @@ on:
       tag:
         description: 'Deployment tag'
         required: true
-        type: string
+        type: type
         default: 'main'
+        options:
+          - main
+          - dev
 
 jobs:
   deploy:
@@ -103,9 +106,9 @@ jobs:
 
             echo "Fetching latest changes from the git repository"
             cd "$tag"
-            git fetch origin "$tag"
-            git checkout "$tag"
-            git reset --hard "origin/$tag"
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
 
             echo "Restarting containers"
             docker compose down --remove-orphans
