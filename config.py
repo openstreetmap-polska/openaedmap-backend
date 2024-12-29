@@ -113,6 +113,7 @@ if SENTRY_DSN := os.getenv('SENTRY_DSN'):
         dsn=SENTRY_DSN,
         release=VERSION,
         environment=ENVIRONMENT,
+        keep_alive=True,
         enable_tracing=True,
         traces_sample_rate=0.2,
         trace_propagation_targets=None,

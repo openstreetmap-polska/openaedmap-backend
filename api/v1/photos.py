@@ -109,12 +109,13 @@ async def upload(
         return Response(f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}', 400)
 
     try:
-        oauth2_credentials_: dict = json.loads(oauth2_credentials)
-        oauth2_token = SecretStr(oauth2_credentials_['access_token'])
-    except Exception:
+        oauth2_credentials_dict: dict = json.loads(oauth2_credentials)
+    except json.JSONDecodeError:
         return Response('OAuth2 credentials must be a JSON object', 400)
-    if 'access_token' not in oauth2_credentials_:
+    if 'access_token' not in oauth2_credentials_dict:
         return Response('OAuth2 credentials must contain an access_token field', 400)
+    oauth2_token = SecretStr(oauth2_credentials_dict['access_token'])
+    del oauth2_credentials_dict
 
     aed = await AEDService.get_by_id(node_id)
     if aed is None:
