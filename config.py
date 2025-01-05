@@ -7,7 +7,7 @@ import sentry_sdk
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.14.0'
+VERSION = '2.14.1'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -38,7 +38,7 @@ TILE_COUNTRIES_MAX_Z = 5
 TILE_MIN_Z = 3
 TILE_MAX_Z = 16
 
-OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter'
+OVERPASS_API_URL = os.getenv('OVERPASS_API_URL', 'https://overpass-api.de/api/interpreter')
 OPENSTREETMAP_API_URL = os.getenv('OPENSTREETMAP_API_URL', 'https://api.openstreetmap.org/api/0.6/')
 
 DEFAULT_CHANGESET_TAGS = {
