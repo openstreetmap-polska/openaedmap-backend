@@ -16,7 +16,7 @@ def osm_user_has_active_block(user: dict) -> bool:
 
 class OpenStreetMap:
     def __init__(self, access_token: SecretStr):
-        self.access_token = access_token
+        self.access_token: SecretStr = access_token
 
     @retry_exponential(10)
     @trace

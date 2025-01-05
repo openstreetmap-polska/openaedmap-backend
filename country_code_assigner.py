@@ -2,7 +2,7 @@ class CountryCodeAssigner:
     __slots__ = 'used'
 
     def __init__(self):
-        self.used = set()
+        self.used: set[str] = set()
 
     def get_unique(self, tags: dict[str, str]) -> str:
         for check_used in (True, False):
