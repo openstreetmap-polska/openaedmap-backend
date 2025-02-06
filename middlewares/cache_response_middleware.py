@@ -91,7 +91,7 @@ async def _deliver_cached_response(cached: CachedResponse, send: Send) -> bool:
 
 
 class CachingResponder:
-    __slots__ = ('app', 'url', 'send', 'cached', 'body_buffer')
+    __slots__ = ('app', 'body_buffer', 'cached', 'send', 'url')
 
     def __init__(self, app: ASGIApp, url: URL) -> None:
         self.app = app
