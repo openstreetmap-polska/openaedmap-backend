@@ -7,7 +7,7 @@ import sentry_sdk
 from pyproj import Transformer
 
 NAME = 'openaedmap-backend'
-VERSION = '2.14.1'
+VERSION = '2.14.2'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -115,7 +115,7 @@ if SENTRY_DSN := os.getenv('SENTRY_DSN'):
         environment=ENVIRONMENT,
         keep_alive=True,
         enable_tracing=True,
-        traces_sample_rate=0.2,
+        traces_sample_rate=0.3,
         trace_propagation_targets=None,
         profiles_sample_rate=0.2,
     )
