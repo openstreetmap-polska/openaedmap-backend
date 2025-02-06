@@ -1,8 +1,6 @@
 [project]
 dependencies = [
   "alembic",
-  "anyio",
-  "asyncache",
   "beautifulsoup4[charset-normalizer,lxml]",
   "cachetools",
   "fastapi",
@@ -10,7 +8,6 @@ dependencies = [
   "gunicorn",
   "httpx[brotli,zstd]",
   "jinja2",
-  "libvalkey>=4.0.1b1",
   "mapbox-vector-tile",
   "numpy",
   "pillow",
@@ -41,35 +38,7 @@ package = false
 python-downloads = "never"
 python-preference = "only-system"
 
-[tool.setuptools]
-packages = ["."]
-
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
-exclude = [
-  ".bzr",
-  ".direnv",
-  ".eggs",
-  ".git",
-  ".git-rewrite",
-  ".hg",
-  ".mypy_cache",
-  ".nox",
-  ".pants.d",
-  ".pytype",
-  ".ruff_cache",
-  ".svn",
-  ".tox",
-  ".venv",
-  "__pypackages__",
-  "_build",
-  "buck-out",
-  "build",
-  "dist",
-  "node_modules",
-  "venv",
-]
-
 indent-width = 4
 line-length = 120
 target-version = "py313"
@@ -110,7 +79,8 @@ select = [
   "E9",
   "F", # pyflakes
   "FA", # flake8-future-annotations
-  "FLY", # flynt  # "FURB", # refurb
+  "FLY", # flynt
+  "FURB", # refurb
   "G", # flake8-logging-format
   "I", # isort
   "ICN", # flake8-import-conventions
@@ -120,7 +90,6 @@ select = [
   "N", # pep8-naming
   "NPY", # numpy
   "PERF", # perflint
-  "PGH", # pygrep-hooks
   "PIE", # flake8-pie
   "PT", # flake8-pytest-style
   "PTH", # flake8-use-pathlib
