@@ -1,9 +1,8 @@
 import fcntl
 import os
+from asyncio import sleep
 from pathlib import Path
 from typing import Literal, cast
-
-import anyio
 
 from config import DATA_DIR
 from utils import retry_exponential
@@ -19,8 +18,8 @@ class WorkerService:
     is_primary: bool
     _lock_fd: int
 
-    @retry_exponential(10)
     @staticmethod
+    @retry_exponential(10)
     async def init() -> 'WorkerService':
         self = WorkerService()
         self._lock_fd = os.open(_LOCK_PATH, os.O_RDONLY | os.O_CREAT)
@@ -38,7 +37,7 @@ class WorkerService:
                     pid = _PID_PATH.read_text()
                     if pid and Path(f'/proc/{pid}').is_dir():
                         break
-                await anyio.sleep(0.1)
+                await sleep(0.1)
 
         return self
 
@@ -53,4 +52,4 @@ class WorkerService:
 
     async def wait_for_state(self, state: WorkerState) -> None:
         while await self.get_state() != state:  # noqa: ASYNC110
-            await anyio.sleep(0.1)
+            await sleep(0.1)

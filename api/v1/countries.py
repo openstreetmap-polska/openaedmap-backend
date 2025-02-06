@@ -1,7 +1,7 @@
+from asyncio import TaskGroup
 from datetime import timedelta
 from typing import Annotated
 
-from anyio import create_task_group
 from fastapi import APIRouter, Path
 from sentry_sdk import start_span
 from shapely import get_coordinates
@@ -28,9 +28,9 @@ async def get_names(language: str | None = None):
             count = await AEDService.count_by_country_code(country.code)
             country_count_map[country.code] = count
 
-        async with create_task_group() as tg:
+        async with TaskGroup() as tg:
             for country in countries:
-                tg.start_soon(count_task, country)
+                tg.create_task(count_task(country))
 
     def limit_country_names(names: dict[str, str]) -> dict[str, str]:
         return {language: name} if (language and (name := names.get(language))) else names

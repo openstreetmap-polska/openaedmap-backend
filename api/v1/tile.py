@@ -1,10 +1,10 @@
+from asyncio import TaskGroup
 from collections.abc import Sequence
 from math import atan, degrees, pi, sinh
 from typing import Annotated
 
 import mapbox_vector_tile as mvt
 import numpy as np
-from anyio import create_task_group
 from fastapi import APIRouter, Path, Response
 from sentry_sdk import start_span, trace
 from shapely import get_coordinates, points, set_coordinates, simplify
@@ -117,9 +117,9 @@ async def _get_tile_country(z: int, bbox: BBox) -> bytes:
             count = await AEDService.count_by_country_code(country.code)
             country_count_map[country.name] = (count, abbreviate(count))
 
-        async with create_task_group() as tg:
+        async with TaskGroup() as tg:
             for country in countries:
-                tg.start_soon(count_task, country)
+                tg.create_task(count_task(country))
 
     simplify_tol = 0.5 / 2**z
     geometries = (simplify(country.geometry, simplify_tol, preserve_topology=False) for country in countries)

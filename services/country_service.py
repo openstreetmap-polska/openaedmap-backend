@@ -1,9 +1,9 @@
 import logging
+from asyncio import Event, sleep
 from collections.abc import Sequence
 from time import time
 from typing import NoReturn
 
-import anyio
 from sentry_sdk import start_transaction, trace
 from shapely.geometry import Point
 from sqlalchemy import func, select, text
@@ -21,20 +21,15 @@ from utils import retry_exponential
 
 class CountryService:
     @staticmethod
-    async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
+    async def update_db_task(started: Event) -> NoReturn:
         if (await _should_update_db())[1] > 0:
-            task_status.started()
-            started = True
-        else:
-            started = False
+            started.set()
 
         while True:
             with start_transaction(op='db.update', name=CountryService.update_db_task.__qualname__, sampled=True):
                 await _update_db()
-            if not started:
-                task_status.started()
-                started = True
-            await anyio.sleep(COUNTRY_UPDATE_DELAY.total_seconds())
+            started.set()
+            await sleep(COUNTRY_UPDATE_DELAY.total_seconds())
 
     @staticmethod
     @trace

@@ -1,9 +1,9 @@
 import logging
 import time
+from asyncio import sleep
 from datetime import timedelta
 from functools import wraps
 
-import anyio
 from httpx import AsyncClient, Timeout
 
 from config import USER_AGENT
@@ -27,17 +27,17 @@ def retry_exponential(timeout: timedelta | float | None, *, start: float = 1):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             ts = time.perf_counter()
-            sleep = start
+            sleep_time = start
 
             while True:
                 try:
                     return await func(*args, **kwargs)
                 except Exception:
                     logging.warning('%s failed', func.__qualname__, exc_info=True)
-                    if (time.perf_counter() + sleep) - ts > timeout_seconds:
+                    if (time.perf_counter() + sleep_time) - ts > timeout_seconds:
                         raise
-                    await anyio.sleep(sleep)
-                    sleep = min(sleep * 2, 4 * 3600)  # max 4 hours
+                    await sleep(sleep_time)
+                    sleep_time = min(sleep_time * 2, 4 * 3600)  # max 4 hours
 
         return wrapper
 

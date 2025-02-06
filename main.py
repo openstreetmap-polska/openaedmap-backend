@@ -1,10 +1,10 @@
 import importlib
 import logging
 import pathlib
+from asyncio import Event, TaskGroup
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
-from anyio import create_task_group
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette_compress import CompressMiddleware
@@ -24,15 +24,20 @@ async def lifespan(_):
     worker_state = await WorkerService.init()
 
     if worker_state.is_primary:
-        async with create_task_group() as tg:
-            await tg.start(CountryService.update_db_task)
-            await tg.start(AEDService.update_db_task)
+        async with TaskGroup() as tg:
+            country_started = Event()
+            country_task = tg.create_task(CountryService.update_db_task(country_started))
+            await country_started.wait()
+            aed_started = Event()
+            aed_task = tg.create_task(AEDService.update_db_task(aed_started))
+            await aed_started.wait()
 
             await worker_state.set_state('running')
             yield
 
             # on shutdown, always abort the tasks
-            tg.cancel_scope.cancel()
+            aed_task.cancel()
+            country_task.cancel()
     else:
         await worker_state.wait_for_state('running')
         yield

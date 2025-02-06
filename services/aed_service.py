@@ -1,12 +1,11 @@
 import logging
+from asyncio import Event, sleep
 from collections.abc import Collection, Iterable, Sequence
 from operator import attrgetter, itemgetter
 from time import time
 from typing import NoReturn, cast
 
-import anyio
 import numpy as np
-from asyncache import cached
 from cachetools import TTLCache
 from sentry_sdk import start_span, start_transaction, trace
 from shapely import Point, get_coordinates, points
@@ -26,25 +25,21 @@ from planet_diffs import get_planet_diffs
 from services.state_service import StateService
 from utils import retry_exponential
 
-OVERPASS_QUERY = 'node[emergency=defibrillator];out meta qt;'
+_COUNTRY_BY_COUNTRY_CODE_CACHE = TTLCache(maxsize=1024, ttl=3600)
+_OVERPASS_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
 
 class AEDService:
     @staticmethod
-    async def update_db_task(*, task_status=anyio.TASK_STATUS_IGNORED) -> NoReturn:
+    async def update_db_task(started: Event) -> NoReturn:
         if (await _should_update_db())[1] > 0:
-            task_status.started()
-            started = True
-        else:
-            started = False
+            started.set()
 
         while True:
             with start_transaction(op='db.update', name=AEDService.update_db_task.__qualname__):
                 await _update_db()
-            if not started:
-                task_status.started()
-                started = True
-            await anyio.sleep(AED_UPDATE_DELAY.total_seconds())
+            started.set()
+            await sleep(AED_UPDATE_DELAY.total_seconds())
 
     @classmethod
     @trace
@@ -52,16 +47,19 @@ class AEDService:
         await _assign_country_codes(await cls.get_all())
 
     @staticmethod
-    @cached(TTLCache(maxsize=1024, ttl=3600))
     @trace
     async def count_by_country_code(country_code: str) -> int:
-        async with db_read() as session:
-            stmt = select(func.count()).select_from(
-                select(text('1'))  #
-                .where(any_(AED.country_codes) == country_code)
-                .subquery()
-            )
-            return (await session.execute(stmt)).scalar_one()
+        result = _COUNTRY_BY_COUNTRY_CODE_CACHE.get(country_code)
+        if result is None:
+            async with db_read() as session:
+                stmt = select(func.count()).select_from(
+                    select(text('1'))  #
+                    .where(any_(AED.country_codes) == country_code)
+                    .subquery()
+                )
+                result = (await session.execute(stmt)).scalar_one()
+                _COUNTRY_BY_COUNTRY_CODE_CACHE[country_code] = result
+        return result
 
     @staticmethod
     @trace
@@ -109,7 +107,12 @@ class AEDService:
             fit_positions = positions
 
         with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
-            model = Birch(threshold=group_eps, n_clusters=None, compute_labels=False, copy=False)
+            model = Birch(
+                threshold=group_eps,
+                n_clusters=None,  # type: ignore
+                compute_labels=False,
+                copy=False,  # type: ignore
+            )
             model.fit(fit_positions)
             center_points = cast(Collection[Point], points(model.subcluster_centers_))
 
@@ -196,7 +199,7 @@ async def _update_db() -> None:
 @trace
 async def _update_db_snapshot() -> None:
     logging.info('Updating aed database (overpass)...')
-    elements, data_timestamp = await query_overpass(OVERPASS_QUERY, timeout=3600, must_return=True)
+    elements, data_timestamp = await query_overpass(_OVERPASS_QUERY, timeout=3600, must_return=True)
     aeds = tuple(_process_overpass_node(e) for e in elements)
 
     async with db_write() as session:

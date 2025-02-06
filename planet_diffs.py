@@ -1,24 +1,24 @@
 import gzip
 import re
+from asyncio import TaskGroup, timeout
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from itertools import chain
 
 import xmltodict
-from anyio import create_task_group, fail_after
 from sentry_sdk import start_span, trace
 
 from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
 from utils import HTTP, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
-_action_open_re = re.compile(r'<(create|modify|delete)>')
-_action_close_re = re.compile(r'</(create|modify|delete)>')
+_action_open_re = re.compile(r'<(?:create|modify|delete)>')
+_action_close_re = re.compile(r'</(?:create|modify|delete)>')
 
 
 @trace
 async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
-    with fail_after(PLANET_DIFF_TIMEOUT.total_seconds()):
+    async with timeout(PLANET_DIFF_TIMEOUT.total_seconds()):
         sequence_numbers = []
         sequence_timestamps = []
 
@@ -35,12 +35,10 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
         if not sequence_numbers:
             return (), last_update
 
-        result: list[tuple[int, list[dict]]] = []
-
         with start_span(description=f'Processing {len(sequence_numbers)} planet diffs'):
 
             @retry_exponential(AED_REBUILD_THRESHOLD)
-            async def _get_planet_diff(sequence_number: int) -> None:
+            async def _get_planet_diff(sequence_number: int) -> tuple[int, list[dict]]:
                 path = f'{_format_sequence_number(sequence_number)}.osc.gz'
                 r = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
                 r.raise_for_status()
@@ -62,14 +60,13 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
                         action.pop('relation', None)
                         node_actions.append(action)
 
-                result.append((sequence_number, node_actions))
+                return sequence_number, node_actions
 
-            async with create_task_group() as tg:
-                for sequence_number in sequence_numbers:
-                    tg.start_soon(_get_planet_diff, sequence_number)
+            async with TaskGroup() as tg:
+                tasks = [tg.create_task(_get_planet_diff(sequence_number)) for sequence_number in sequence_numbers]
 
-        # sort by sequence number in ascending order
-        result.sort(key=lambda x: x[0])
+        result = [t.result() for t in tasks]
+        result.sort(key=lambda x: x[0])  # sort by sequence number in ascending order
 
         data = tuple(chain.from_iterable(data for _, data in result))
         data_timestamp = sequence_timestamps[0]
