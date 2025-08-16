@@ -67,6 +67,7 @@ jobs:
       - name: Build container image
         id: image
         run: |
+          nix-shell --pure --run true
           image_path=$(nix-build --no-out-link)
           echo "out=$image_path" >> "$GITHUB_OUTPUT"
 
