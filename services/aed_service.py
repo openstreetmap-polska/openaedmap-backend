@@ -156,13 +156,11 @@ async def _assign_country_codes(aeds: Collection[AED]) -> None:
         stmt = (
             update(AED)
             .where(AED.id.in_(text(','.join(str(id) for id in ids))))
-            .values(
-                {
-                    AED.country_codes: select(array_agg(Country.code))
-                    .where(func.ST_Intersects(Country.geometry, AED.position))
-                    .scalar_subquery()
-                }
-            )
+            .values({
+                AED.country_codes: select(array_agg(Country.code))
+                .where(func.ST_Intersects(Country.geometry, AED.position))
+                .scalar_subquery()
+            })
         )
         await session.execute(stmt)
 
@@ -246,18 +244,16 @@ async def _update_db_diffs(last_update: float) -> None:
 
     async with db_write() as session:
         if aeds:
-            stmt = insert(AED).values(
-                [
-                    {
-                        'id': aed.id,
-                        'version': aed.version,
-                        'tags': aed.tags,
-                        'position': aed.position,
-                        'country_codes': None,
-                    }
-                    for aed in aeds
-                ]
-            )
+            stmt = insert(AED).values([
+                {
+                    'id': aed.id,
+                    'version': aed.version,
+                    'tags': aed.tags,
+                    'position': aed.position,
+                    'country_codes': None,
+                }
+                for aed in aeds
+            ])
             stmt = stmt.on_conflict_do_update(
                 index_elements=(AED.id,),
                 set_={

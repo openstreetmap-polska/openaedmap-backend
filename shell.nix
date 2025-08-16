@@ -1,8 +1,13 @@
-{ isDevelopment ? true }:
+{
+  isDevelopment ? true,
+}:
 
 let
   # Update packages with `nixpkgs-update` command
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/507b63021ada5fee621b6ca371c4fca9ca46f52c.tar.gz") { };
+  pkgs =
+    import
+      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/32f313e49e42f715491e1ea7b306a87c16fe0388.tar.gz")
+      { };
 
   pythonLibs = with pkgs; [
     file.out
@@ -10,23 +15,27 @@ let
     zlib.out
     stdenv.cc.cc.lib
   ];
-  python' = with pkgs; (symlinkJoin {
-    name = "python";
-    paths = [
-      # Enable compiler optimizations when in production
-      (if isDevelopment then python313 else python313.override { enableOptimizations = true; })
-    ];
-    buildInputs = [ makeWrapper ];
-    postBuild = ''
-      wrapProgram "$out/bin/python3.13" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
-    '';
-  });
+  python' =
+    with pkgs;
+    (symlinkJoin {
+      name = "python";
+      paths = [
+        # Enable compiler optimizations when in production
+        (if isDevelopment then python313 else python313.override { enableOptimizations = true; })
+      ];
+      buildInputs = [ makeWrapper ];
+      postBuild = ''
+        wrapProgram "$out/bin/python3.13" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
+      '';
+    });
 
   packages' = with pkgs; [
     python'
     uv
     ruff
     coreutils
+    curl
+    jq
     (postgresql_17_jit.withPackages (ps: [ ps.postgis ]))
     valkey
 
@@ -113,11 +122,11 @@ let
     (writeShellScriptBin "nixpkgs-update" ''
       set -e
       hash=$(
-        curl --silent --location \
-        https://prometheus.nixos.org/api/v1/query \
-        -d "query=channel_revision{channel=\"nixpkgs-unstable\"}" | \
-        grep --only-matching --extended-regexp "[0-9a-f]{40}")
-      sed -i -E "s|/nixpkgs/archive/[0-9a-f]{40}\.tar\.gz|/nixpkgs/archive/$hash.tar.gz|" shell.nix
+        curl -sSL \
+          https://prometheus.nixos.org/api/v1/query \
+          -d 'query=channel_revision{channel="nixpkgs-unstable"}' \
+        | jq -r ".data.result[0].metric.revision")
+      sed -i "s|nixpkgs/archive/[0-9a-f]\\{40\\}|nixpkgs/archive/$hash|" shell.nix
       echo "Nixpkgs updated to $hash"
     '')
     (writeShellScriptBin "docker-build" ''
@@ -127,34 +136,38 @@ let
     '')
   ];
 
-  shell' = with pkgs; lib.optionalString isDevelopment ''
-    export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-    export PYTHONNOUSERSITE=1
-    export PYTHONPATH=""
-    export TZ=UTC
+  shell' =
+    with pkgs;
+    lib.optionalString isDevelopment ''
+      export TZ=UTC
+      export NIX_SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt
+      export SSL_CERT_FILE=$NIX_SSL_CERT_FILE
+      export PYTHONNOUSERSITE=1
+      export PYTHONPATH=""
 
-    current_python=$(readlink -e .venv/bin/python || echo "")
-    current_python=''${current_python%/bin/*}
-    [ "$current_python" != "${python'}" ] && rm -rf .venv/
+      current_python=$(readlink -e .venv/bin/python || echo "")
+      current_python=''${current_python%/bin/*}
+      [ "$current_python" != "${python'}" ] && rm -rf .venv/
 
-    echo "Installing Python dependencies"
-    export UV_PYTHON="${python'}/bin/python"
-    uv sync --frozen
+      echo "Installing Python dependencies"
+      export UV_PYTHON="${python'}/bin/python"
+      uv sync --frozen
 
-    echo "Activating Python virtual environment"
-    source .venv/bin/activate
+      echo "Activating Python virtual environment"
+      source .venv/bin/activate
 
-    if [ -f .env ]; then
-      echo "Loading .env file"
-      set -o allexport
-      source .env set
-      set +o allexport
-    else
-      echo "Skipped loading .env file (not found)"
-    fi
-  '' + lib.optionalString (!isDevelopment) ''
-    make-version
-  '';
+      if [ -f .env ]; then
+        echo "Loading .env file"
+        set -o allexport
+        source .env set
+        set +o allexport
+      else
+        echo "Skipped loading .env file (not found)"
+      fi
+    ''
+    + lib.optionalString (!isDevelopment) ''
+      make-version
+    '';
 in
 pkgs.mkShell {
   buildInputs = packages';

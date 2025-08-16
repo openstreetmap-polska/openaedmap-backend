@@ -44,25 +44,21 @@ async def get_names(language: str | None = None):
         }
         for country in countries
     ]
-    result.append(
-        {
-            'country_code': 'WORLD',
-            'country_names': {'default': 'World'},
-            'feature_count': sum(country_count_map.values()),
-            'data_path': '/api/v1/countries/WORLD.geojson',
-        }
-    )
+    result.append({
+        'country_code': 'WORLD',
+        'country_names': {'default': 'World'},
+        'feature_count': sum(country_count_map.values()),
+        'data_path': '/api/v1/countries/WORLD.geojson',
+    })
     return result
 
 
 @router.get('/{country_code}.geojson')
 @cache_control(timedelta(hours=1), stale=timedelta(seconds=0))
-@skip_serialization(
-    {
-        'Content-Disposition': 'attachment',
-        'Content-Type': 'application/geo+json; charset=utf-8',
-    }
-)
+@skip_serialization({
+    'Content-Disposition': 'attachment',
+    'Content-Type': 'application/geo+json; charset=utf-8',
+})
 async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length=5)]):
     if country_code == 'WORLD':
         aeds = await AEDService.get_all()

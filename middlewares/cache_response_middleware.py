@@ -56,37 +56,29 @@ async def _deliver_cached_response(cached: CachedResponse, send: Send) -> bool:
 
     if now < (cached.date + cached.max_age):
         headers['X-Cache'] = 'HIT'
-        await send(
-            {
-                'type': 'http.response.start',
-                'status': cached.status_code,
-                'headers': headers.raw,
-            }
-        )
-        await send(
-            {
-                'type': 'http.response.body',
-                'body': cached.content,
-            }
-        )
+        await send({
+            'type': 'http.response.start',
+            'status': cached.status_code,
+            'headers': headers.raw,
+        })
+        await send({
+            'type': 'http.response.body',
+            'body': cached.content,
+        })
         return True
 
     else:
         headers['Cache-Control'] = make_cache_control(max_age=timedelta(), stale=cached.stale)
         headers['X-Cache'] = 'STALE'
-        await send(
-            {
-                'type': 'http.response.start',
-                'status': cached.status_code,
-                'headers': headers.raw,
-            }
-        )
-        await send(
-            {
-                'type': 'http.response.body',
-                'body': cached.content,
-            }
-        )
+        await send({
+            'type': 'http.response.start',
+            'status': cached.status_code,
+            'headers': headers.raw,
+        })
+        await send({
+            'type': 'http.response.body',
+            'body': cached.content,
+        })
         return False
 
 

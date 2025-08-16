@@ -1,4 +1,6 @@
-{ pkgs ? import <nixpkgs> { } }:
+{
+  pkgs ? import <nixpkgs> { },
+}:
 
 let
   envTag = builtins.getEnv "TAG";
@@ -16,7 +18,10 @@ let
         cp -r "${./.venv/lib/python3.13/site-packages}"/* $out/lib
       '')
     ];
-    pathsToLink = [ "/bin" "/lib" ];
+    pathsToLink = [
+      "/bin"
+      "/lib"
+    ];
   };
 
   entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
@@ -29,7 +34,8 @@ let
     exec python -m gunicorn main:app "$@"
   '';
 in
-with pkgs; dockerTools.buildLayeredImage {
+with pkgs;
+dockerTools.buildLayeredImage {
   name = "backend";
   tag = if envTag != "" then envTag else "latest";
 
@@ -68,10 +74,10 @@ with pkgs; dockerTools.buildLayeredImage {
   config = {
     WorkingDir = "/app";
     Env = [
+      "TZ=UTC"
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
-      "TZ=UTC"
     ];
     Volumes = {
       "/app/data/postgres" = { };

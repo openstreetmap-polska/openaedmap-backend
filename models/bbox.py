@@ -38,15 +38,13 @@ class BBox(NamedTuple):
         p2_x, p2_y = get_coordinates(self.p2)[0]
 
         if nodes_per_edge <= 2:
-            return Polygon(
-                (
-                    (p1_x, p1_y),
-                    (p2_x, p1_y),
-                    (p2_x, p2_y),
-                    (p1_x, p2_y),
-                    (p1_x, p1_y),
-                )
-            )
+            return Polygon((
+                (p1_x, p1_y),
+                (p2_x, p1_y),
+                (p2_x, p2_y),
+                (p1_x, p2_y),
+                (p1_x, p1_y),
+            ))
 
         x_vals = np.linspace(p1_x, p2_x, nodes_per_edge)
         y_vals = np.linspace(p1_y, p2_y, nodes_per_edge)

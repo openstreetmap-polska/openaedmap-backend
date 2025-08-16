@@ -45,9 +45,9 @@ class OpenStreetMap:
 
     @trace
     async def upload_osm_change(self, osm_change: str) -> str:
-        changeset = xmltodict.unparse(
-            {'osm': {'changeset': {'tag': [{'@k': k, '@v': v} for k, v in DEFAULT_CHANGESET_TAGS.items()]}}}
-        )
+        changeset = xmltodict.unparse({
+            'osm': {'changeset': {'tag': [{'@k': k, '@v': v} for k, v in DEFAULT_CHANGESET_TAGS.items()]}}
+        })
 
         r = await HTTP.put(
             f'{OPENSTREETMAP_API_URL}changeset/create',

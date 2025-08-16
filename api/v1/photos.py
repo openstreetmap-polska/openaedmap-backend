@@ -24,7 +24,6 @@ router = APIRouter(prefix='/photos')
 
 
 async def _fetch_image(url: str) -> tuple[bytes, str]:
-    # NOTE: ideally we would verify whether url is not a private resource
     async with HTTP.stream('GET', url) as r:
         r.raise_for_status()
 
@@ -167,12 +166,10 @@ async def report_rss(request: Request):
         fe.id(report.id)
         fe.title('🚨 Received photo report')
         fe.content(
-            '<br>'.join(
-                (
-                    f'File name: {photo.file_path.name}',
-                    f'Node: https://osm.org/node/{photo.node_id}',
-                )
-            ),
+            '<br>'.join((
+                f'File name: {photo.file_path.name}',
+                f'Node: https://osm.org/node/{photo.node_id}',
+            )),
             type='CDATA',
         )
         fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
