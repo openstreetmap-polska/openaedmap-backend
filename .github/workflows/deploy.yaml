@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Deployment tag'
+        description: "Deployment tag"
         required: true
         type: choice
-        default: 'main'
+        default: "main"
         options:
           - main
           - dev
@@ -22,6 +22,39 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v32
+
+      - name: Generate cache key
+        run: |
+          nixpkgs_hash=$(grep -Eom1 'archive/[0-9a-f]{40}\.tar\.gz' shell.nix | cut -d'/' -f2 | cut -d'.' -f1)
+          echo "NIXPKGS_HASH=$nixpkgs_hash" >> $GITHUB_ENV
+          echo "CACHE_KEY=${{ runner.os }}-$nixpkgs_hash" >> $GITHUB_ENV
+
+      - uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ env.CACHE_KEY }}
+
+      - name: Setup NIX_PATH
+        run: |
+          path=$(nix eval --impure --expr "(import (fetchTarball \"https://github.com/NixOS/nixpkgs/archive/${{ env.NIXPKGS_HASH }}.tar.gz\") {}).path")
+          echo "NIX_PATH=nixpkgs=$path" >> $GITHUB_ENV
+
+      - name: Get cache directories
+        id: cache-dirs
+        run: |
+          nix-shell -p uv --run "
+            echo \"UV_CACHE=\$(uv cache dir)\"
+          " | tee -a $GITHUB_OUTPUT
+
+      - name: Cache files and packages
+        uses: actions/cache@v4
+        with:
+          key: pkg-${{ env.CACHE_KEY }}-${{ hashFiles('uv.lock') }}
+          path: |
+            ${{ steps.cache-dirs.outputs.UV_CACHE }}
+            .venv
+
       - name: Configure deployment tag
         id: tag
         run: |
@@ -31,46 +64,11 @@ jobs:
             echo "out=dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v30
-        with:
-          nix_path: nixpkgs=channel:nixpkgs-24.11-darwin
-
-      - name: Generate cache key
-        id: cache-key
-        run: |
-          nixpkgs_hash=$(egrep -o 'archive/[0-9a-f]{40}\.tar\.gz' shell.nix | cut -d'/' -f2 | cut -d'.' -f1)
-          echo "out=${{ runner.os }}-$nixpkgs_hash" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Nix store
-        id: nix-cache
-        uses: actions/cache@v4
-        with:
-          key: nix-${{ steps.cache-key.outputs.out }}
-          path: /tmp/nix-cache
-
-      - name: Import Nix store cache
-        if: steps.nix-cache.outputs.cache-hit == 'true'
-        run: nix-store --import < /tmp/nix-cache
-
-      - name: Cache Python venv
-        uses: actions/cache@v4
-        with:
-          key: python-${{ steps.cache-key.outputs.out }}-${{ hashFiles('uv.lock') }}
-          path: |
-            ~/.cache/uv
-            .venv
-
       - name: Build container image
         id: image
         run: |
-          nix-shell --pure --run true
           image_path=$(nix-build --no-out-link)
           echo "out=$image_path" >> "$GITHUB_OUTPUT"
-
-      - name: Export Nix store cache
-        if: steps.nix-cache.outputs.cache-hit != 'true'
-        run: nix-store --export $(find /nix/store -maxdepth 1 -name '*-*') > /tmp/nix-cache
 
       - name: Configure SSH
         run: |
@@ -107,7 +105,6 @@ jobs:
             echo "Fetching latest changes from the git repository"
             cd "$tag"
             git fetch origin main
-            git checkout main
             git reset --hard origin/main
 
             echo "Restarting containers"
