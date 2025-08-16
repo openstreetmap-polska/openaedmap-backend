@@ -19,7 +19,10 @@ let
     with pkgs;
     (symlinkJoin {
       name = "python";
-      paths = [ python313 ];
+      paths = [
+        # Enable compiler optimizations when in production
+        (if isDevelopment then python313 else python313.override { enableOptimizations = true; })
+      ];
       buildInputs = [ makeWrapper ];
       postBuild = ''
         wrapProgram "$out/bin/python3.13" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
