@@ -31,7 +31,6 @@ let
     uv
     ruff
     coreutils
-    curl
     jq
     (postgresql_17_jit.withPackages (ps: [ ps.postgis ]))
     valkey
