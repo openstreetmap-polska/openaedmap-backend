@@ -63,6 +63,11 @@ async def view(id: str):
 @cache_control(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_direct(url_encoded: str):
     url = unquote_plus(url_encoded)
+
+    # For some reason, some requests are double-encoded
+    if not url.lower().startswith(('https://', 'http://')):
+        url = unquote_plus(url)
+
     file, content_type = await _fetch_image(url)
     return Response(file, media_type=content_type)
 
