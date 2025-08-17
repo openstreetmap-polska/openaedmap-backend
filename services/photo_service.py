@@ -3,7 +3,7 @@ from io import BytesIO
 
 from fastapi import UploadFile
 from PIL import Image, ImageOps
-from sentry_sdk import trace
+from sentry_sdk import add_attachment, trace
 
 from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE
 from db import db_read, db_write
@@ -28,7 +28,18 @@ class PhotoService:
     @trace
     async def upload(node_id: int, user_id: int, file: UploadFile) -> Photo:
         img = Image.open(file.file)
-        ImageOps.exif_transpose(img, in_place=True)
+
+        try:
+            ImageOps.exif_transpose(img, in_place=True)
+        except Exception:
+            file.file.seek(0)
+            add_attachment(
+                file.file.read(),
+                filename=file.filename,
+                content_type=file.content_type,
+            )
+            raise
+
         img = _resize_image(img)
         img_bytes = _optimize_quality(img)
 
