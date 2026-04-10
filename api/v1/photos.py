@@ -109,6 +109,7 @@ async def upload(
         return Response('File must not be empty', 400)
 
     content_type = magic.from_buffer(file.file.read(2048), mime=True)
+    file.file.seek(0)
     if content_type not in IMAGE_CONTENT_TYPES:
         return Response(f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}', 400)
 
