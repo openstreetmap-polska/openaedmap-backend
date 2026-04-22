@@ -78,6 +78,7 @@ jobs:
           fi
 
           printf '::group::Build image streamer (%s)\n' "$tag"
+          nix-shell --pure --run true
           image_streamer=$(TAG="$tag" nix-build --no-out-link)
           printf '::endgroup::\n'
 
