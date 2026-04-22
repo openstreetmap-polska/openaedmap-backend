@@ -59,3 +59,8 @@ class PointType(_GeometryType):
 class PolygonType(_GeometryType):
     geometry_type = 'Polygon'
     cache_ok = True
+
+
+class GeometryType(_GeometryType):
+    geometry_type = 'Geometry'
+    cache_ok = True

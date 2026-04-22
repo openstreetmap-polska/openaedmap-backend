@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.db.base import Base
-from models.geometry import PointType, PolygonType
+from models.geometry import GeometryType, PointType
 
 
 class Country(Base):
@@ -17,7 +17,7 @@ class Country(Base):
     )
 
     names: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)
-    geometry: Mapped[Polygon | MultiPolygon] = mapped_column(PolygonType, nullable=False)
+    geometry: Mapped[Polygon | MultiPolygon] = mapped_column(GeometryType, nullable=False)
     label_position: Mapped[Point] = mapped_column(PointType, nullable=False)
 
     __table_args__ = (Index('country_geometry_idx', geometry, postgresql_using='gist'),)
