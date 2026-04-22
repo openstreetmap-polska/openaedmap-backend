@@ -111,7 +111,6 @@ class AEDService:
                 threshold=group_eps,
                 n_clusters=None,  # type: ignore
                 compute_labels=False,
-                copy=False,  # type: ignore
             )
             model.fit(fit_positions)
             center_points = cast(Collection[Point], points(model.subcluster_centers_))
