@@ -12,8 +12,8 @@ from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_UR
 from utils import HTTP, retry_exponential
 from xmltodict_postprocessor import xmltodict_postprocessor
 
-_action_open_re = re.compile(r'<(?:create|modify|delete)>')
-_action_close_re = re.compile(r'</(?:create|modify|delete)>')
+_action_open_re = re.compile(r'<(create|modify|delete)>')
+_action_close_re = re.compile(r'</(create|modify|delete)>')
 
 
 @trace
