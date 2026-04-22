@@ -22,10 +22,10 @@ jobs:
     name: Deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@v32
+      - uses: actions/checkout@v6
+      - uses: nixbuild/nix-quick-install-action@v34
         with:
-          nix_version: 2.28.4
+          nix_version: 2.31.2
 
       - name: Generate cache key
         run: |
@@ -33,7 +33,7 @@ jobs:
           echo "NIXPKGS_HASH=$nixpkgs_hash" >> $GITHUB_ENV
           echo "CACHE_KEY=${{ runner.os }}-$nixpkgs_hash" >> $GITHUB_ENV
 
-      - uses: nix-community/cache-nix-action@v6
+      - uses: nix-community/cache-nix-action@v7
         with:
           primary-key: nix-${{ env.CACHE_KEY }}
 
@@ -57,22 +57,6 @@ jobs:
             ${{ steps.cache-dirs.outputs.UV_CACHE }}
             .venv
 
-      - name: Configure deployment tag
-        id: tag
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "out=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "out=dev" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build container image
-        id: image
-        run: |
-          nix-shell --pure --run true
-          image_path=$(nix-build --no-out-link)
-          echo "out=$image_path" >> "$GITHUB_OUTPUT"
-
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
@@ -85,25 +69,30 @@ jobs:
             IdentityFile ~/.ssh/id
           " > ~/.ssh/config
 
-      - name: Upload container image
-        run: scp "${{ steps.image.outputs.out }}" remote:~
-
       - name: Deploy on remote
         run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag=dev
+          fi
+
+          printf '::group::Build image streamer (%s)\n' "$tag"
+          image_streamer=$(TAG="$tag" nix-build --no-out-link)
+          printf '::endgroup::\n'
+
+          printf '::group::Stream image to remote Docker\n'
+          "$image_streamer" | ssh remote 'docker load'
+          printf '::endgroup::\n'
+
+          printf '::group::Deploy on remote\n'
           ssh remote <<\EOF
             set -e
-            tag="${{ steps.tag.outputs.out }}"
-            image_filename="$(basename "${{ steps.image.outputs.out }}")"
-
-            cleanup() {
-              cd ~
-              echo "Cleaning up"
-              rm -f "$image_filename"
-            }
-            trap cleanup EXIT
-
-            echo "Loading Docker image"
-            docker load < "$image_filename"
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              tag="${{ inputs.tag }}"
+            else
+              tag=dev
+            fi
 
             echo "Fetching latest changes from the git repository"
             cd "$tag"
@@ -117,3 +106,4 @@ jobs:
             echo "Pruning dangling images"
             docker image prune -f
           EOF
+          printf '::endgroup::\n'

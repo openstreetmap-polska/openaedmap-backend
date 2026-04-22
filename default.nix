@@ -35,7 +35,7 @@ let
   '';
 in
 with pkgs;
-dockerTools.buildLayeredImage {
+dockerTools.streamLayeredImage {
   name = "backend";
   tag = if envTag != "" then envTag else "latest";
 
