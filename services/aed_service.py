@@ -96,13 +96,13 @@ class AEDService:
         if len(aeds) <= 1 or group_eps is None:
             return aeds
 
-        positions = tuple(get_coordinates(aed.position)[0] for aed in aeds)
+        positions = get_coordinates([aed.position for aed in aeds])
 
         # deterministic sampling
         max_fit_samples = 7000
         if len(positions) > max_fit_samples:
             indices = np.linspace(0, len(positions), max_fit_samples, endpoint=False, dtype=int)
-            fit_positions = np.asarray(positions)[indices]
+            fit_positions = positions[indices]
         else:
             fit_positions = positions
 
