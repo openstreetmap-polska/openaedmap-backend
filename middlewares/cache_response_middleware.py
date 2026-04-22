@@ -1,18 +1,15 @@
 import logging
+from compression.zstd import compress, decompress
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 
 from sentry_sdk import trace
 from starlette.datastructures import URL, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from zstandard import ZstdCompressor, ZstdDecompressor
 
 from db import valkey
 from middlewares.cache_control_middleware import make_cache_control, parse_cache_control
 from models.cached_response import CachedResponse
-
-_compress = ZstdCompressor(level=1).compress
-_decompress = ZstdDecompressor().decompress
 
 
 class CacheResponseMiddleware:
@@ -155,13 +152,13 @@ async def _get_cached_response(url: URL) -> CachedResponse | None:
         return None
 
     logging.debug('Found cached response for %r', key)
-    return CachedResponse.from_bytes(_decompress(value))
+    return CachedResponse.from_bytes(decompress(value))
 
 
 @trace
 async def _set_cached_response(url: URL, cached: CachedResponse) -> None:
     key = f'cache2:{url.path}:{url.query}'
-    value = _compress(cached.to_bytes())
+    value = compress(cached.to_bytes(), level=1)
     ttl = int((cached.max_age + cached.stale).total_seconds())
 
     logging.debug('Caching response for %r', key)

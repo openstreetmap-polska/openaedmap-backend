@@ -5,7 +5,7 @@ dependencies = [
   "cachetools",
   "fastapi",
   "feedgen",
-  "gunicorn",
+  "h2corn",
   "httpx-secure",
   "httpx[brotli,zstd]",
   "jinja2",
@@ -16,7 +16,6 @@ dependencies = [
   "pyproj",
   "python-magic",
   "python-multipart",
-  "pytz",
   "scikit-learn",
   "sentry-sdk[fastapi,httpx,sqlalchemy]",
   "shapely",
@@ -24,13 +23,11 @@ dependencies = [
   "starlette-compress",
   "supervisor",
   "tzfpy",
-  "uvicorn[standard]",
   "valkey[libvalkey]",
   "xmltodict",
-  "zstandard",
 ]
 name = "openaedmap-backend"
-requires-python = "~=3.13.0"
+requires-python = "~=3.14.0"
 version = "0.0.0"
 
 [tool.uv]
@@ -41,7 +38,7 @@ python-preference = "only-system"
 [tool.ruff]
 indent-width = 4
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 # custom + https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
@@ -122,7 +119,7 @@ line-ending = "lf"
 preview = true
 
 [tool.ruff.lint.flake8-builtins]
-builtins-ignorelist = ["filter", "format", "id", "open", "type"]
+ignorelist = ["filter", "format", "id", "open", "type"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"

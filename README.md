@@ -38,7 +38,7 @@ nix-shell
 dev-start
 
 # Launch the web server
-uvicorn main:app
+h2corn main:app
 ```
 
 Navigate to http://localhost:8000 to access the web app locally.

@@ -1,17 +1,15 @@
 import json
 from collections.abc import Sequence
+from compression.zstd import decompress
 from typing import cast
 
 from sentry_sdk import trace
 from shapely import MultiPolygon, Point, Polygon
 from shapely.geometry import shape
-from zstandard import ZstdDecompressor
 
 from config import COUNTRY_GEOJSON_URL
 from models.osm_country import OSMCountry
 from utils import HTTP
-
-_zstd_decompress = ZstdDecompressor().decompress
 
 
 @trace
@@ -19,7 +17,7 @@ async def get_osm_countries() -> Sequence[OSMCountry]:
     r = await HTTP.get(COUNTRY_GEOJSON_URL)
     r.raise_for_status()
 
-    buffer = _zstd_decompress(r.content)
+    buffer = decompress(r.content)
     data: dict = json.loads(buffer)
     result = []
 

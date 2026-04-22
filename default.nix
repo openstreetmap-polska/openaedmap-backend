@@ -15,7 +15,7 @@ let
         mkdir -p $out/bin $out/lib
         find "${./.venv/bin}" -type f -executable -exec cp {} $out/bin \;
         sed -i '1s|^#!.*/python|#!/usr/bin/env python|' $out/bin/*
-        cp -r "${./.venv/lib/python3.13/site-packages}"/* $out/lib
+        cp -r "${./.venv/lib/python3.14/site-packages}"/* $out/lib
       '')
     ];
     pathsToLink = [
@@ -31,7 +31,7 @@ let
     set -o allexport
     source "envs/app/${envTag}.env" set
     set +o allexport
-    exec python -m gunicorn main:app "$@"
+    exec h2corn main:app "$@"
   '';
 in
 with pkgs;

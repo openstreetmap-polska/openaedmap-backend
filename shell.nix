@@ -6,7 +6,7 @@ let
   # Update packages with `nixpkgs-update` command
   pkgs =
     import
-      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/ad7196ae55c295f53a7d1ec39e4a06d922f3b899.tar.gz")
+      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/e07580dae39738e46609eaab8b154de2488133ce.tar.gz")
       { };
 
   pythonLibs = with pkgs; [
@@ -21,11 +21,11 @@ let
       name = "python";
       paths = [
         # Enable compiler optimizations when in production
-        (if isDevelopment then python313 else python313.override { enableOptimizations = true; })
+        (if isDevelopment then python314 else python314.override { enableOptimizations = true; })
       ];
       buildInputs = [ makeWrapper ];
       postBuild = ''
-        wrapProgram "$out/bin/python3.13" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
+        wrapProgram "$out/bin/python3.14" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
       '';
     });
 
@@ -124,7 +124,7 @@ let
       hash=$(
         curl -sSL \
           https://prometheus.nixos.org/api/v1/query \
-          -d 'query=channel_revision{channel="nixos-25.05"}' \
+          -d 'query=channel_revision{channel="nixos-25.11"}' \
         | jq -r ".data.result[0].metric.revision")
       sed -i "s|nixpkgs/archive/[0-9a-f]\\{40\\}|nixpkgs/archive/$hash|" shell.nix
       echo "Nixpkgs updated to $hash"

@@ -1,9 +1,9 @@
 import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Response
-from pytz import timezone
 from shapely import get_coordinates
 from tzfpy import get_tz
 
@@ -24,7 +24,7 @@ def _get_timezone(x: float, y: float) -> tuple[str | None, str | None]:
 
     if timezone_name:
         try:
-            dt = datetime.now(tz=timezone(timezone_name))
+            dt = datetime.now(tz=ZoneInfo(timezone_name))
             offset = dt.strftime('%z')
             timezone_offset = f'UTC{offset[:3]}:{offset[3:]}'
         except Exception:  # noqa: S110
