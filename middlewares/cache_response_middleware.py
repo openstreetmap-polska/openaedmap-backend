@@ -106,6 +106,12 @@ class CachingResponder:
         if self.cached is None:
             return
 
+        if message_type == 'http.response.pathsend':
+            # The file is already local and cheap to read; avoid duplicating it in Valkey.
+            self.cached = None
+            self.body_buffer.close()
+            return
+
         # skip unknown messages
         if message_type != 'http.response.body':
             logging.warning('Unsupported ASGI message type %r', message_type)
