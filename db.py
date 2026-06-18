@@ -1,4 +1,6 @@
+from asyncio import AbstractEventLoop, get_running_loop
 from contextlib import asynccontextmanager
+from weakref import WeakKeyDictionary
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from valkey.asyncio import ConnectionPool, Valkey
@@ -40,10 +42,20 @@ async def db_write():
         await session.commit()
 
 
-_valkey_pool = ConnectionPool().from_url(VALKEY_URL)
+_valkey_pools: WeakKeyDictionary[AbstractEventLoop, ConnectionPool] = WeakKeyDictionary()
+
+
+def _valkey_pool() -> ConnectionPool:
+    loop = get_running_loop()
+    if pool := _valkey_pools.get(loop):
+        return pool
+
+    pool = ConnectionPool().from_url(VALKEY_URL)
+    _valkey_pools[loop] = pool
+    return pool
 
 
 @asynccontextmanager
 async def valkey():
-    async with Valkey(connection_pool=_valkey_pool) as r:
+    async with Valkey(connection_pool=_valkey_pool()) as r:
         yield r

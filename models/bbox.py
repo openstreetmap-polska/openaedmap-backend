@@ -10,7 +10,7 @@ class BBox(NamedTuple):
     p1: Point
     p2: Point
 
-    def extend(self, percentage: float) -> 'BBox':
+    def extend(self, percentage: float) -> BBox:
         p1_coords = get_coordinates(self.p1)[0]
         p2_coords = get_coordinates(self.p2)[0]
 
@@ -24,7 +24,7 @@ class BBox(NamedTuple):
         return BBox(p1, p2)
 
     @classmethod
-    def from_tuple(cls, bbox: tuple[float, float, float, float]) -> 'BBox':
+    def from_tuple(cls, bbox: tuple[float, float, float, float]) -> BBox:
         p1, p2 = points(((bbox[0], bbox[1]), (bbox[2], bbox[3])))
         return cls(p1, p2)
 
@@ -57,7 +57,7 @@ class BBox(NamedTuple):
         all_coords = np.concatenate((bottom_edge, right_edge, top_edge[::-1], left_edge[::-1]))
         return Polygon(all_coords)
 
-    def correct_for_dateline(self) -> tuple['BBox', ...]:
+    def correct_for_dateline(self) -> tuple[BBox, ...]:
         if self.p1.x > self.p2.x:
             b1_p1 = self.p1
             b2_p2 = self.p2

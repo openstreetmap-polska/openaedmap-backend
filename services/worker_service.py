@@ -20,7 +20,7 @@ class WorkerService:
 
     @staticmethod
     @retry_exponential(10)
-    async def init() -> 'WorkerService':
+    async def init() -> WorkerService:
         self = WorkerService()
         self._lock_fd = os.open(_LOCK_PATH, os.O_RDONLY | os.O_CREAT)
 

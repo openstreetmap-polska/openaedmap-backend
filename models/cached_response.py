@@ -16,5 +16,5 @@ class CachedResponse:
         return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
-    def from_bytes(cls, buffer: bytes) -> 'CachedResponse':
+    def from_bytes(cls, buffer: bytes) -> CachedResponse:
         return pickle.loads(buffer)  # noqa: S301
