@@ -6,7 +6,7 @@ let
   # Update packages with `nixpkgs-update` command
   pkgs =
     import
-      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/d6df3513510aa548c83868fd22bfddd0a8c0a0d4.tar.gz")
+      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/b6018f87da91d19d0ab4cf979885689b469cdd41.tar.gz")
       { };
 
   pythonLibs = with pkgs; [
