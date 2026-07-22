@@ -44,7 +44,11 @@ async def lifespan(_):
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=JSONResponseUTF8)
+# innermost first. CompressMiddleware sits under CacheResponseMiddleware so cached
+# entries are already encoded and a cache hit compresses nothing; CORS and version
+# headers stay above the cache so hits still get current values.
 app.add_middleware(CacheControlMiddleware)
+app.add_middleware(CompressMiddleware)
 app.add_middleware(CacheResponseMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +58,6 @@ app.add_middleware(
     max_age=int(timedelta(days=1).total_seconds()),
 )
 app.add_middleware(VersionMiddleware)
-app.add_middleware(CompressMiddleware)
 app.add_middleware(ProfilerMiddleware)
 
 
