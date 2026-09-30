@@ -105,14 +105,23 @@ dictConfig({
     },
 })
 
+
+def _traces_sampler(sampling_context: dict) -> float:
+    # Map tiles are most of the request volume and individually uninteresting;
+    # a 1% sample keeps their latency visible without dominating Sentry's ingest.
+    asgi_scope = sampling_context.get('asgi_scope')
+    if asgi_scope is not None and asgi_scope['path'].startswith('/api/v1/tile/'):
+        return 0.01
+    return 0.3
+
+
 if SENTRY_DSN := os.getenv('SENTRY_DSN'):
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         release=VERSION,
         environment=ENVIRONMENT,
         keep_alive=True,
-        enable_tracing=True,
-        traces_sample_rate=0.3,
+        traces_sampler=_traces_sampler,
         trace_propagation_targets=None,
         profiles_sample_rate=0.2,
     )
