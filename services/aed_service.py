@@ -11,7 +11,7 @@ from sentry_sdk import start_span, start_transaction, trace
 from shapely import Point, get_coordinates, points
 from shapely.geometry.base import BaseGeometry
 from sklearn.cluster import Birch
-from sqlalchemy import any_, delete, func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import array_agg, insert
 
 from config import AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
@@ -52,11 +52,7 @@ class AEDService:
         result = _COUNTRY_BY_COUNTRY_CODE_CACHE.get(country_code)
         if result is None:
             async with db_read() as session:
-                stmt = select(func.count()).select_from(
-                    select(text('1'))  #
-                    .where(any_(AED.country_codes) == country_code)
-                    .subquery()
-                )
+                stmt = select(func.count()).select_from(AED).where(AED.country_codes.contains([country_code]))
                 result = (await session.execute(stmt)).scalar_one()
                 _COUNTRY_BY_COUNTRY_CODE_CACHE[country_code] = result
         return result
@@ -78,7 +74,7 @@ class AEDService:
     @trace
     async def get_by_country_code(cls, country_code: str) -> Sequence[AED]:
         async with db_read() as session:
-            stmt = select(AED).where(any_(AED.country_codes) == country_code)
+            stmt = select(AED).where(AED.country_codes.contains([country_code]))
             return (await session.scalars(stmt)).all()
 
     @classmethod

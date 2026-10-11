@@ -1,6 +1,6 @@
 from shapely import Point
-from sqlalchemy import ARRAY, BigInteger, Index, Unicode
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, Index, Unicode
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.db.base import Base
