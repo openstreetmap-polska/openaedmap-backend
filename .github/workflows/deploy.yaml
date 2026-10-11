@@ -30,8 +30,8 @@ jobs:
       - name: Generate cache key
         run: |
           nixpkgs_hash=$(grep -Eom1 'archive/[0-9a-f]{40}\.tar\.gz' shell.nix | cut -d'/' -f2 | cut -d'.' -f1)
-          echo "NIXPKGS_HASH=$nixpkgs_hash" >> $GITHUB_ENV
-          echo "CACHE_KEY=${{ runner.os }}-$nixpkgs_hash" >> $GITHUB_ENV
+          echo "NIXPKGS_HASH=$nixpkgs_hash" >> "$GITHUB_ENV"
+          echo "CACHE_KEY=${{ runner.os }}-$nixpkgs_hash" >> "$GITHUB_ENV"
 
       - uses: nix-community/cache-nix-action@v7
         with:
@@ -40,14 +40,14 @@ jobs:
       - name: Setup NIX_PATH
         run: |
           path=$(nix eval --impure --expr "(import (fetchTarball \"https://github.com/NixOS/nixpkgs/archive/${{ env.NIXPKGS_HASH }}.tar.gz\") {}).path")
-          echo "NIX_PATH=nixpkgs=$path" >> $GITHUB_ENV
+          echo "NIX_PATH=nixpkgs=$path" >> "$GITHUB_ENV"
 
       - name: Get cache directories
         id: cache-dirs
         run: |
           nix-shell -p uv --run "
             echo \"UV_CACHE=\$(uv cache dir)\"
-          " | tee -a $GITHUB_OUTPUT
+          " | tee -a "$GITHUB_OUTPUT"
 
       - name: Cache files and packages
         uses: actions/cache@v4
@@ -83,7 +83,9 @@ jobs:
           printf '::endgroup::\n'
 
           printf '::group::Stream image to remote Docker\n'
-          "$image_streamer" | ssh remote 'docker load'
+          export image_streamer
+          # shellcheck disable=SC2016
+          nix-shell -p zstd --run 'set -o pipefail; "$image_streamer" | zstd -T0 -1' | ssh remote 'docker load'
           printf '::endgroup::\n'
 
           printf '::group::Deploy on remote\n'

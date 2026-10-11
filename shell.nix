@@ -29,112 +29,132 @@ let
       '';
     });
 
-  packages' = with pkgs; [
-    python'
-    uv
-    ruff
-    coreutils
-    curl
-    jq
-    (postgresql_17_jit.withPackages (ps: [ ps.postgis ]))
-    valkey
+  packages' =
+    with pkgs;
+    [
+      python'
+      coreutils
+      gnugrep
+      (lib.getBin curl)
+      (postgresql_17.withPackages (ps: [
+        (runCommand "postgis-runtime-${ps.postgis.version}" { } ''
+          cp -a ${ps.postgis}/. "$out"
+          chmod -R u+w "$out"
+          # Unused without JIT; bitcode retains the build compiler's entire closure.
+          rm -rf "$out/lib/bitcode"
+          rm -f "$out"/bin/raster2pgsql* "$out"/lib/postgis_raster-* \
+            "$out"/share/postgresql/extension/postgis_raster*
+        '')
+      ]))
+      valkey
 
-    # Scripts
-    # -- Alembic
-    (writeShellScriptBin "alembic-migration" ''
-      set -e
-      name=$1
-      if [ -z "$name" ]; then
-        read -p "Database migration name: " name
-      fi
-      alembic -c config/alembic.ini revision --autogenerate --message "$name"
-    '')
-    (writeShellScriptBin "alembic-upgrade" "alembic -c config/alembic.ini upgrade head")
-
-    # -- Supervisor
-    (writeShellScriptBin "dev-start" ''
-      set -e
-      pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
-      if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
-        echo "Supervisor is already running"
-        exit 0
-      fi
-
-      if [ ! -f data/postgres/PG_VERSION ]; then
-        initdb -D data/postgres \
-          --no-instructions \
-          --locale-provider=icu \
-          --icu-locale=und \
-          --no-locale \
-          --text-search-config=pg_catalog.simple \
-          --auth=trust \
-          --username=postgres
-      fi
-
-      mkdir -p /tmp/openaedmap-postgres data/supervisor
-      supervisord -c config/supervisord.conf
-      echo "Supervisor started"
-
-      echo "Waiting for Postgres to start..."
-      time_start=$(date +%s)
-      while ! pg_isready -q -h /tmp/openaedmap-postgres; do
-        elapsed=$(($(date +%s) - $time_start))
-        if [ $elapsed -gt 10 ]; then
-          tail -n 15 data/supervisor/supervisord.log data/supervisor/postgres.log
-          echo "Postgres startup timeout, see above logs for details"
-          dev-stop
-          exit 1
+    ]
+    ++ lib.optionals isDevelopment [
+      uv
+      ruff
+      jq
+      (writeShellScriptBin "alembic-migration" ''
+        set -e
+        name=$1
+        if [ -z "$name" ]; then
+          read -p "Database migration name: " name
         fi
-        sleep 0.1
-      done
+        alembic -c config/alembic.ini revision --autogenerate --message "$name"
+      '')
+    ]
+    ++ [
+      (writeShellScriptBin "alembic-upgrade" "alembic -c config/alembic.ini upgrade head")
 
-      echo "Postgres started, running migrations"
-      alembic-upgrade
-    '')
-    (writeShellScriptBin "dev-stop" ''
-      set -e
-      pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
-      if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
-        kill -INT "$pid"
-        echo "Supervisor stopping..."
-        while $(kill -0 "$pid" 2> /dev/null); do sleep 0.1; done
-        echo "Supervisor stopped"
-      else
-        echo "Supervisor is not running"
-      fi
-    '')
-    (writeShellScriptBin "dev-restart" ''
-      set -ex
-      dev-stop
-      dev-start
-    '')
-    (writeShellScriptBin "dev-clean" ''
-      set -e
-      dev-stop
-      rm -rf data/postgres
-    '')
-    (writeShellScriptBin "dev-logs-postgres" "tail -f data/supervisor/postgres.log")
+      # -- Supervisor
+      (writeShellScriptBin "dev-start" ''
+        set -e
+        pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
+        if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
+          echo "Supervisor is already running"
+          exit 0
+        fi
 
-    # -- Misc
-    (writeShellScriptBin "make-version" ''
-      sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
-    '')
-    (writeShellScriptBin "nixpkgs-update" ''
-      set -e
-      hash=$(
-        curl -sSL \
-          https://prometheus.nixos.org/api/v1/query \
-          -d 'query=channel_revision{channel="nixos-25.11"}' \
-        | jq -r ".data.result[0].metric.revision")
-      sed -i "s|nixpkgs/archive/[0-9a-f]\\{40\\}|nixpkgs/archive/$hash|" shell.nix
-      echo "Nixpkgs updated to $hash"
-    '')
-    (writeShellScriptBin "docker-build" ''
-      set -e
-      if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
-      docker load < "$(nix-build --no-out-link)"
-    '')
-  ];
+        if [ ! -f data/postgres/PG_VERSION ]; then
+          initdb -D data/postgres \
+            --no-instructions \
+            --locale-provider=icu \
+            --icu-locale=und \
+            --no-locale \
+            --text-search-config=pg_catalog.simple \
+            --auth=trust \
+            --username=postgres
+        fi
+
+        mkdir -p /tmp/openaedmap-postgres data/supervisor
+        supervisord -c config/supervisord.conf
+        echo "Supervisor started"
+
+        echo "Waiting for Postgres to start..."
+        time_start=$(date +%s)
+        while ! pg_isready -q -h /tmp/openaedmap-postgres; do
+          elapsed=$(($(date +%s) - $time_start))
+          if [ $elapsed -gt 10 ]; then
+            tail -n 15 data/supervisor/supervisord.log data/supervisor/postgres.log
+            echo "Postgres startup timeout, see above logs for details"
+            dev-stop
+            exit 1
+          fi
+          sleep 0.1
+        done
+
+        echo "Postgres started, running migrations"
+        alembic-upgrade
+      '')
+      (writeShellScriptBin "dev-stop" ''
+        set -e
+        pid=$(cat data/supervisor/supervisord.pid 2> /dev/null || echo "")
+        if [ -n "$pid" ] && $(grep -q "supervisord" "/proc/$pid/cmdline" 2> /dev/null); then
+          kill -INT "$pid"
+          echo "Supervisor stopping..."
+          while $(kill -0 "$pid" 2> /dev/null); do sleep 0.1; done
+          echo "Supervisor stopped"
+        else
+          echo "Supervisor is not running"
+        fi
+      '')
+    ]
+    ++ lib.optionals isDevelopment [
+      (writeShellScriptBin "dev-restart" ''
+        set -ex
+        dev-stop
+        dev-start
+      '')
+      (writeShellScriptBin "dev-clean" ''
+        set -e
+        dev-stop
+        rm -rf data/postgres
+      '')
+      (writeShellScriptBin "dev-logs-postgres" "tail -f data/supervisor/postgres.log")
+
+      # -- Misc
+    ]
+    ++ [
+      (writeShellScriptBin "make-version" ''
+        sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
+      '')
+    ]
+    ++ lib.optionals isDevelopment [
+      (writeShellScriptBin "nixpkgs-update" ''
+        set -e
+        hash=$(
+          curl -sSL \
+            https://prometheus.nixos.org/api/v1/query \
+            -d 'query=channel_revision{channel="nixos-25.11"}' \
+          | jq -r ".data.result[0].metric.revision")
+        sed -i "s|nixpkgs/archive/[0-9a-f]\\{40\\}|nixpkgs/archive/$hash|" shell.nix
+        echo "Nixpkgs updated to $hash"
+      '')
+      (writeShellScriptBin "docker-build" ''
+        set -e
+        if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
+        "$(nix-build --no-out-link)" | docker load
+      '')
+    ];
 
   shell' =
     with pkgs;
