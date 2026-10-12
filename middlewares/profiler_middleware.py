@@ -28,15 +28,11 @@ class ProfilerMiddleware:
             await self.app(scope, receive, send)
             return
 
-        profiler = Profiler()
-        profiler.start()
+        async def discard_response(message: Message) -> None:
+            pass
 
-        async def wrapper(message: Message) -> None:
-            if message['type'] != 'http.response.start':
-                return
+        with Profiler() as profiler:
+            await self.app(scope, receive, discard_response)
 
-            profiler.stop()
-            response = HTMLResponse(profiler.output_html())
-            await response(scope, receive, send)
-
-        await self.app(scope, receive, wrapper)
+        response = HTMLResponse(profiler.output_html())
+        await response(scope, receive, send)

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import pytest
 from valkey.asyncio import Valkey
 
-from tests.cache_helpers import body, headers, request, respond
+from tests.asgi_helpers import body, headers, request, respond
 
 
 @pytest.mark.asyncio

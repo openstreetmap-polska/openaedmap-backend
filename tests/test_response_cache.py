@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from tests.cache_helpers import body, headers, request, request_scope, respond, seed_cache
+from tests.asgi_helpers import body, headers, request, request_scope, respond, seed_cache
 
 
 @pytest.mark.asyncio
