@@ -12,6 +12,14 @@ class CachedResponse:
     headers: list[tuple[bytes, bytes]]
     content: bytes
 
+    @property
+    def fresh_until(self) -> datetime:
+        return self.date + self.max_age
+
+    @property
+    def expires_at(self) -> datetime:
+        return self.fresh_until + self.stale
+
     def to_bytes(self) -> bytes:
         return pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL)
 
