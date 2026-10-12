@@ -79,7 +79,7 @@ jobs:
 
           printf '::group::Build image streamer (%s)\n' "$tag"
           nix-shell --pure --run true
-          image_streamer=$(TAG="$tag" nix-build --no-out-link)
+          image_streamer=$(TAG="$tag" SENTRY_RELEASE="$GITHUB_SHA" nix-build --no-out-link)
           printf '::endgroup::\n'
 
           printf '::group::Stream image to remote Docker\n'
@@ -99,8 +99,8 @@ jobs:
 
             echo "Fetching latest changes from the git repository"
             cd "$tag"
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin "${{ github.sha }}"
+            git reset --hard FETCH_HEAD
 
             echo "Restarting containers"
             docker compose down --remove-orphans
