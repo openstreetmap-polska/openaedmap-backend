@@ -11,7 +11,7 @@ _PID_PATH = DATA_DIR / 'worker.pid'
 _STATE_PATH = DATA_DIR / 'worker.state'
 _LOCK_PATH = DATA_DIR / 'worker.lock'
 
-WorkerState = Literal['startup', 'running']
+type WorkerState = Literal['startup', 'running']
 
 
 class WorkerService:
