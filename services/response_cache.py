@@ -1,9 +1,10 @@
 import logging
 from asyncio import CancelledError, create_task, sleep
 from collections.abc import AsyncIterator
-from compression.zstd import compress, decompress
+from compression.zstd import ZstdError, compress, decompress
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from pickle import UnpicklingError
 from secrets import token_hex
 
 from sentry_sdk import trace
@@ -40,10 +41,21 @@ class ResponseCacheEntry:
     async def get(self) -> CachedResponse | None:
         if not self.available:
             return None
-        value = await self.client.get(self.key)
+        try:
+            value = await self.client.get(self.key)
+        except _UNAVAILABLE as exc:
+            self._unavailable(exc)
+            return None
         if value is None:
             return None
-        cached = CachedResponse.from_bytes(decompress(value))
+        try:
+            cached = CachedResponse.from_bytes(decompress(value))
+        except (ZstdError, UnpicklingError, EOFError, ValueError, TypeError) as exc:
+            logging.warning('Invalid response cache entry: %s', exc)
+            return None
+        if not isinstance(cached, CachedResponse):
+            logging.warning('Invalid response cache value type')
+            return None
         return cached if datetime.now(UTC) < cached.expires_at else None
 
     @asynccontextmanager
@@ -100,6 +112,9 @@ class ResponseCacheEntry:
         if ttl_ms <= 0:
             return
         value = compress(cached.to_bytes(), level=1)
-        # Publication must check ownership atomically: an expired or evicted
-        # lease must not let an old refresh overwrite its successor.
-        await self.client.eval(_STORE, 2, self.key, 'refresh:' + self.key, self._token, value, ttl_ms)
+        try:
+            # Publication must check ownership atomically: an expired or evicted
+            # lease must not let an old refresh overwrite its successor.
+            await self.client.eval(_STORE, 2, self.key, 'refresh:' + self.key, self._token, value, ttl_ms)
+        except _UNAVAILABLE as exc:
+            self._unavailable(exc)
