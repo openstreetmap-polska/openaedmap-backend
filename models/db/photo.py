@@ -17,7 +17,7 @@ class Photo(Base, CreatedAtMixin):
         init=False,
         nullable=False,
         primary_key=True,
-        default=lambda: secrets.token_urlsafe(16),
+        insert_default=lambda: secrets.token_urlsafe(16),
     )
 
     node_id: Mapped[int] = mapped_column(BigInteger, nullable=False)

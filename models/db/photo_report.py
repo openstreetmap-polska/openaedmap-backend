@@ -16,7 +16,7 @@ class PhotoReport(Base, CreatedAtMixin):
         init=False,
         nullable=False,
         primary_key=True,
-        default=lambda: secrets.token_urlsafe(16),
+        insert_default=lambda: secrets.token_urlsafe(16),
     )
 
     photo_id: Mapped[str] = mapped_column(ForeignKey(Photo.id), nullable=False)
