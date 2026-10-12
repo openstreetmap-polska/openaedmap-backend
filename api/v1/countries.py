@@ -22,7 +22,7 @@ async def get_names(language: str | None = None):
     countries = await CountryService.get_all()
     country_count_map: dict[str, int] = {}
 
-    with start_span(description='Counting AEDs'):
+    with start_span(name='Counting AEDs'):
 
         async def count_task(country: Country) -> None:
             count = await AEDService.count_by_country_code(country.code)

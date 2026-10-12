@@ -35,7 +35,7 @@ async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
         if not sequence_numbers:
             return (), last_update
 
-        with start_span(description=f'Processing {len(sequence_numbers)} planet diffs'):
+        with start_span(name=f'Processing {len(sequence_numbers)} planet diffs'):
 
             @retry_exponential(AED_REBUILD_THRESHOLD)
             async def _get_planet_diff(sequence_number: int) -> tuple[int, list[dict]]:
