@@ -35,7 +35,7 @@ class WorkerService:
             while True:
                 if _PID_PATH.is_file() and _STATE_PATH.is_file():
                     pid = _PID_PATH.read_text()
-                    if pid and Path(f'/proc/{pid}').is_dir():
+                    if pid and Path(f'/proc/{pid}').is_dir():  # noqa: ASYNC240 - procfs metadata is memory-backed
                         break
                 await sleep(0.1)
 
