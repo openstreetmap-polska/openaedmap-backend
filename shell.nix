@@ -50,6 +50,7 @@ let
 
     ]
     ++ lib.optionals isDevelopment [
+      git
       uv
       ruff
       jq
@@ -151,6 +152,7 @@ let
       '')
       (writeShellScriptBin "docker-build" ''
         set -e
+        export SENTRY_RELEASE="$(git rev-parse HEAD)"
         if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
         "$(nix-build --no-out-link)" | docker load
       '')

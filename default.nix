@@ -78,6 +78,7 @@ dockerTools.streamLayeredImage {
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
+      "SENTRY_RELEASE=${builtins.getEnv "SENTRY_RELEASE"}"
     ];
     Volumes = {
       "/app/data/postgres" = { };

@@ -118,7 +118,6 @@ def _traces_sampler(sampling_context: dict) -> float:
 if SENTRY_DSN := os.getenv('SENTRY_DSN'):
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        release=VERSION,
         environment=ENVIRONMENT,
         keep_alive=True,
         traces_sampler=_traces_sampler,
