@@ -65,6 +65,7 @@ async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length
     else:
         aeds = await AEDService.get_by_country_code(country_code)
 
+    positions = get_coordinates([aed.position for aed in aeds]).tolist()
     return {
         'type': 'FeatureCollection',
         'features': [
@@ -72,7 +73,7 @@ async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length
                 'type': 'Feature',
                 'geometry': {
                     'type': 'Point',
-                    'coordinates': get_coordinates(aed.position)[0].tolist(),
+                    'coordinates': position,
                 },
                 'properties': {
                     '@osm_type': 'node',
@@ -81,6 +82,6 @@ async def get_geojson(country_code: Annotated[str, Path(min_length=2, max_length
                     **aed.tags,
                 },
             }
-            for aed in aeds
+            for aed, position in zip(aeds, positions, strict=True)
         ],
     }
