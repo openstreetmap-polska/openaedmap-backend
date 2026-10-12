@@ -50,7 +50,7 @@ def _valkey_pool() -> ConnectionPool:
     if pool := _valkey_pools.get(loop):
         return pool
 
-    pool = ConnectionPool().from_url(VALKEY_URL)
+    pool = ConnectionPool.from_url(VALKEY_URL)
     _valkey_pools[loop] = pool
     return pool
 
