@@ -3,21 +3,16 @@ from asyncio import Event, sleep
 from collections.abc import Collection, Iterable, Sequence
 from operator import attrgetter, itemgetter
 from time import time
-from typing import NoReturn, cast
+from typing import NoReturn
 
-import numpy as np
 from cachetools import TTLCache
-from sentry_sdk import start_span, start_transaction, trace
-from shapely import Point, get_coordinates, points
-from shapely.geometry.base import BaseGeometry
-from sklearn.cluster import Birch
+from sentry_sdk import start_transaction, trace
+from shapely import Point
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import array_agg, insert
 
 from config import AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
 from db import db_read, db_write
-from models.aed_group import AEDGroup
-from models.bbox import BBox
 from models.db.aed import AED
 from models.db.country import Country
 from overpass import query_overpass
@@ -76,68 +71,6 @@ class AEDService:
         async with db_read() as session:
             stmt = select(AED).where(AED.country_codes.contains([country_code]))
             return (await session.scalars(stmt)).all()
-
-    @classmethod
-    @trace
-    async def get_intersecting(
-        cls, bbox_or_geom: BBox | BaseGeometry, group_eps: float | None
-    ) -> Sequence[AED | AEDGroup]:
-        geometry = bbox_or_geom.to_polygon() if isinstance(bbox_or_geom, BBox) else bbox_or_geom
-        geometry_wkt = geometry.wkt
-
-        async with db_read() as session:
-            stmt = select(AED).where(func.ST_Intersects(AED.position, func.ST_GeomFromText(geometry_wkt, 4326)))
-            aeds = (await session.scalars(stmt)).all()
-
-        if len(aeds) <= 1 or group_eps is None:
-            return aeds
-
-        positions = get_coordinates([aed.position for aed in aeds])
-
-        # deterministic sampling
-        max_fit_samples = 7000
-        if len(positions) > max_fit_samples:
-            indices = np.linspace(0, len(positions), max_fit_samples, endpoint=False, dtype=int)
-            fit_positions = positions[indices]
-        else:
-            fit_positions = positions
-
-        with start_span(description=f'Fitting model with {len(fit_positions)} samples'):
-            model = Birch(
-                threshold=group_eps,
-                n_clusters=None,  # type: ignore
-                compute_labels=False,
-            )
-            model.fit(fit_positions)
-            center_points = cast(Collection[Point], points(model.subcluster_centers_))
-
-        with start_span(description=f'Processing {len(aeds)} samples'):
-            cluster_groups: tuple[list[AED], ...] = tuple([] for _ in range(len(center_points)))
-            result: list[AED | AEDGroup] = []
-
-            with start_span(description='Clustering'):
-                clusters = model.predict(positions)
-
-            cluster: int
-            for aed, cluster in zip(aeds, clusters, strict=True):
-                cluster_groups[cluster].append(aed)
-
-            for group, center_point in zip(cluster_groups, center_points, strict=True):
-                if len(group) == 0:
-                    continue
-                if len(group) == 1:
-                    result.append(group[0])
-                    continue
-
-                result.append(
-                    AEDGroup(
-                        position=center_point,
-                        count=len(group),
-                        access=AEDGroup.decide_access(aed.access for aed in group),
-                    )
-                )
-
-        return result
 
 
 @trace

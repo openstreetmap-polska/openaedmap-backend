@@ -43,6 +43,11 @@ h2corn main:app
 
 Navigate to http://localhost:8000 to access the web app locally.
 
+### Tests
+
+Inside the development shell, run `uv run --group test pytest`.
+The suite starts disposable PostgreSQL/PostGIS and Valkey instances and cleans them up afterward.
+
 ### Cleanup
 
 ```sh
