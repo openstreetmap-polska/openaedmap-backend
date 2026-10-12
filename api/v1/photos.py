@@ -1,14 +1,18 @@
 import json
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from io import BytesIO
 from typing import Annotated
 from urllib.parse import unquote_plus
 
+import httpx
 import magic
 from bs4 import BeautifulSoup, Tag
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from feedgen.feed import FeedGenerator
+from httpx_secure import SSRFProtectionError
 from pydantic import SecretStr
 
 from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
@@ -23,28 +27,51 @@ from utils import HTTP, get_wikimedia_commons_url
 router = APIRouter(prefix='/photos')
 
 
-async def _fetch_image(url: str) -> tuple[bytes, str]:
-    async with HTTP.stream('GET', url) as r:
-        r.raise_for_status()
+def _image_unavailable(status_code: int) -> HTTPException:
+    return HTTPException(status_code, 'Image unavailable', headers={'Cache-Control': 'no-store'})
 
+
+@asynccontextmanager
+async def _proxy_request(url: str) -> AsyncGenerator[httpx.Response]:
+    try:
+        async with HTTP.stream('GET', url) as response:
+            response.raise_for_status()
+            yield response
+    except httpx.HTTPStatusError as exc:
+        status_code = 404 if exc.response.status_code in {401, 403, 404, 410} else 502
+        raise _image_unavailable(status_code) from exc
+    except httpx.TimeoutException as exc:
+        raise _image_unavailable(504) from exc
+    except (httpx.InvalidURL, httpx.UnsupportedProtocol, SSRFProtectionError) as exc:
+        raise _image_unavailable(400) from exc
+    except (
+        httpx.NetworkError,
+        httpx.RemoteProtocolError,
+        httpx.ProxyError,
+        httpx.DecodingError,
+        httpx.TooManyRedirects,
+    ) as exc:
+        raise _image_unavailable(502) from exc
+
+
+async def _fetch_image(url: str) -> tuple[bytes, str]:
+    async with _proxy_request(url) as r:
         # Early detection of unsupported types
         content_type = r.headers.get('Content-Type')
         if content_type and content_type not in IMAGE_CONTENT_TYPES:
-            raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
+            raise _image_unavailable(502)
 
         with BytesIO() as buffer:
             async for chunk in r.aiter_bytes(1024 * 1024):
                 buffer.write(chunk)
                 if buffer.tell() > IMAGE_REMOTE_MAX_FILE_SIZE:
-                    raise HTTPException(
-                        500, f'File is too large, max allowed size is {IMAGE_REMOTE_MAX_FILE_SIZE} bytes'
-                    )
+                    raise _image_unavailable(502)
             file = buffer.getvalue()
 
     # Check if file type is supported
     content_type = magic.from_buffer(file[:2048], mime=True)
     if content_type not in IMAGE_CONTENT_TYPES:
-        raise HTTPException(500, f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}')
+        raise _image_unavailable(502)
 
     return file, content_type
 
@@ -68,7 +95,10 @@ async def proxy_direct(url_encoded: str):
     if not url.lower().startswith(('https://', 'http://')):
         url = unquote_plus(url)
 
-    file, content_type = await _fetch_image(url)
+    try:
+        file, content_type = await _fetch_image(url)
+    except HTTPException as exc:
+        return JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)
     return Response(file, media_type=content_type)
 
 
@@ -76,19 +106,22 @@ async def proxy_direct(url_encoded: str):
 @cache_control(timedelta(days=7), stale=timedelta(days=7))
 async def proxy_wikimedia_commons(path_encoded: str):
     meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
-    r = await HTTP.get(meta_url)
-    r.raise_for_status()
+    try:
+        async with _proxy_request(meta_url) as r:
+            await r.aread()
 
-    bs = BeautifulSoup(r.text, 'lxml')
-    og_image = bs.find('meta', property='og:image')
-    if not isinstance(og_image, Tag):
-        return Response('Missing og:image meta tag', 404)
+        bs = BeautifulSoup(r.text, 'lxml')
+        og_image = bs.find('meta', property='og:image')
+        if not isinstance(og_image, Tag):
+            return Response('Missing og:image meta tag', 404)
 
-    image_url = og_image['content']
-    if not isinstance(image_url, str):
-        return Response('Invalid og:image meta tag (expected str)', 404)
+        image_url = og_image['content']
+        if not isinstance(image_url, str):
+            return Response('Invalid og:image meta tag (expected str)', 404)
 
-    file, content_type = await _fetch_image(image_url)
+        file, content_type = await _fetch_image(image_url)
+    except HTTPException as exc:
+        return JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)
     return Response(file, media_type=content_type)
 
 
