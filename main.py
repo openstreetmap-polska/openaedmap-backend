@@ -11,45 +11,45 @@ from starlette_compress import CompressMiddleware
 
 from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import CacheControlMiddleware
-from middlewares.cache_response_middleware import CacheResponseMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
 from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService
+from services.byte_cache import byte_cache
 from services.country_service import CountryService
 from services.worker_service import WorkerService
 
 
 @asynccontextmanager
 async def lifespan(_):
-    worker_state = await WorkerService.init()
+    try:
+        worker_state = await WorkerService.init()
 
-    if worker_state.is_primary:
-        async with TaskGroup() as tg:
-            country_started = Event()
-            country_task = tg.create_task(CountryService.update_db_task(country_started))
-            await country_started.wait()
-            aed_started = Event()
-            aed_task = tg.create_task(AEDService.update_db_task(aed_started))
-            await aed_started.wait()
+        if worker_state.is_primary:
+            async with TaskGroup() as tg:
+                country_started = Event()
+                country_task = tg.create_task(CountryService.update_db_task(country_started))
+                await country_started.wait()
+                aed_started = Event()
+                aed_task = tg.create_task(AEDService.update_db_task(aed_started))
+                await aed_started.wait()
 
-            await worker_state.set_state('running')
+                await worker_state.set_state('running')
+                yield
+
+                # on shutdown, always abort the tasks
+                aed_task.cancel()
+                country_task.cancel()
+        else:
+            await worker_state.wait_for_state('running')
             yield
 
-            # on shutdown, always abort the tasks
-            aed_task.cancel()
-            country_task.cancel()
-    else:
-        await worker_state.wait_for_state('running')
-        yield
+    finally:
+        await byte_cache.close()
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=JSONResponseUTF8)
-# innermost first. CompressMiddleware sits under CacheResponseMiddleware so cached
-# entries are already encoded and a cache hit compresses nothing; CORS and version
-# headers stay above the cache so hits still get current values.
 app.add_middleware(CacheControlMiddleware)
 app.add_middleware(CompressMiddleware)
-app.add_middleware(CacheResponseMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],

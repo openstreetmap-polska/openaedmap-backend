@@ -20,14 +20,19 @@ async def _proxy_client(
 ) -> AsyncGenerator[httpx.AsyncClient]:
     from api.v1 import photos
     from middlewares.cache_control_middleware import CacheControlMiddleware
+    from services.byte_cache import byte_cache
 
+    byte_cache.invalidate(lambda _: True)
     app = FastAPI()
     app.include_router(photos.router, prefix='/api/v1')
     app.add_middleware(CacheControlMiddleware)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as upstream:
         monkeypatch.setattr(photos, 'HTTP', upstream)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://backend') as client:
-            yield client
+            try:
+                yield client
+            finally:
+                await byte_cache.close()
 
 
 def _commons_metadata() -> httpx.Response:

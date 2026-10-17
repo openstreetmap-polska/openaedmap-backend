@@ -10,21 +10,27 @@ import httpx
 import magic
 from bs4 import BeautifulSoup, Tag
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from feedgen.feed import FeedGenerator
 from httpx_secure import SSRFProtectionError
 from pydantic import SecretStr
+from starlette.staticfiles import StaticFiles
 
 from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
 from middlewares.cache_control_middleware import cache_control
+from models.payload import ImageKey, Payload
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
 from osm_change import update_node_tags_osm_change
+from payload_response import payload_response
 from services.aed_service import AEDService
+from services.byte_cache import byte_cache
 from services.photo_report_service import PhotoReportService
 from services.photo_service import PhotoService
-from utils import HTTP, get_wikimedia_commons_url
+from utils import HTTP, get_wikimedia_commons_url, run_blocking
 
 router = APIRouter(prefix='/photos')
+_files = StaticFiles()
+_IMAGE_TTL = timedelta(days=7).total_seconds()
 
 
 def _image_unavailable(status_code: int) -> HTTPException:
@@ -78,17 +84,18 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
 
 @router.get('/view/{id}.webp')
 @cache_control(timedelta(days=365), stale=timedelta(days=365))
-async def view(id: str):
+async def view(request: Request, id: str):
     photo = await PhotoService.get_by_id(id)
     if photo is None:
         return Response(f'Photo {id!r} not found', 404)
 
-    return FileResponse(photo.file_path)
+    stat = await run_blocking(photo.file_path.stat)
+    return _files.file_response(photo.file_path, stat, request.scope)
 
 
 @router.get('/proxy/direct/{url_encoded:path}')
 @cache_control(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_direct(url_encoded: str):
+async def proxy_direct(request: Request, url_encoded: str):
     url = unquote_plus(url_encoded)
 
     # For some reason, some requests are double-encoded
@@ -96,33 +103,38 @@ async def proxy_direct(url_encoded: str):
         url = unquote_plus(url)
 
     try:
-        file, content_type = await _fetch_image(url)
+        payload = await byte_cache.get(ImageKey('direct', url), lambda: _image_payload(url), ttl=_IMAGE_TTL)
     except HTTPException as exc:
         return JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)
-    return Response(file, media_type=content_type)
+    return payload_response(request, payload)
+
+
+async def _image_payload(url: str) -> Payload:
+    file, content_type = await _fetch_image(url)
+    return Payload.create(file, content_type)
 
 
 @router.get('/proxy/wikimedia-commons/{path_encoded:path}')
 @cache_control(timedelta(days=7), stale=timedelta(days=7))
-async def proxy_wikimedia_commons(path_encoded: str):
+async def proxy_wikimedia_commons(request: Request, path_encoded: str):
     meta_url = get_wikimedia_commons_url(unquote_plus(path_encoded))
     try:
-        async with _proxy_request(meta_url) as r:
-            await r.aread()
-
-        bs = BeautifulSoup(r.text, 'lxml')
-        og_image = bs.find('meta', property='og:image')
-        if not isinstance(og_image, Tag):
-            return Response('Missing og:image meta tag', 404)
-
-        image_url = og_image['content']
-        if not isinstance(image_url, str):
-            return Response('Invalid og:image meta tag (expected str)', 404)
-
-        file, content_type = await _fetch_image(image_url)
+        payload = await byte_cache.get(
+            ImageKey('wikimedia', meta_url), lambda: _wikimedia_payload(meta_url), ttl=_IMAGE_TTL
+        )
     except HTTPException as exc:
         return JSONResponse({'detail': exc.detail}, status_code=exc.status_code, headers=exc.headers)
-    return Response(file, media_type=content_type)
+    return payload_response(request, payload)
+
+
+async def _wikimedia_payload(meta_url: str) -> Payload:
+    async with _proxy_request(meta_url) as r:
+        await r.aread()
+    bs = await run_blocking(BeautifulSoup, r.text, 'lxml')
+    og_image = bs.find('meta', property='og:image')
+    if not isinstance(og_image, Tag) or not isinstance(image_url := og_image.get('content'), str):
+        raise _image_unavailable(404)
+    return await _image_payload(image_url)
 
 
 @router.post('/upload')

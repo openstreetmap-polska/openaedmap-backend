@@ -1,7 +1,3 @@
-from compression.zstd import compress
-from datetime import UTC, datetime, timedelta
-
-
 def request_scope(path='/example', *, method='GET', encoding=''):
     return {
         'type': 'http',
@@ -42,17 +38,3 @@ async def respond(send, content=b'new response', *, cache_control=b'public, max-
         'headers': [(b'cache-control', cache_control), (b'content-length', str(len(content)).encode())],
     })
     await send({'type': 'http.response.body', 'body': content})
-
-
-async def seed_cache(client, *, stale=False):
-    from models.cached_response import CachedResponse
-
-    cached = CachedResponse(
-        date=datetime.now(UTC) - timedelta(seconds=65 if stale else 0),
-        max_age=timedelta(seconds=60),
-        stale=timedelta(seconds=60),
-        status_code=200,
-        headers=[(b'cache-control', b'public, max-age=60, stale-while-revalidate=60'), (b'content-length', b'3')],
-        content=b'old',
-    )
-    await client.set('cache3:identity:/example:', compress(cached.to_bytes()), ex=120)

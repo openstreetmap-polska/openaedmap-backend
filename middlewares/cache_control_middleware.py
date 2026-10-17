@@ -13,23 +13,6 @@ def make_cache_control(max_age: timedelta, stale: timedelta):
     return f'public, max-age={int(max_age.total_seconds())}, stale-while-revalidate={int(stale.total_seconds())}'
 
 
-def parse_cache_control(header: str) -> tuple[timedelta, timedelta]:
-    max_age = None
-    stale = None
-
-    for part in header.split(','):
-        part = part.strip()
-        if part.startswith('max-age='):
-            max_age = timedelta(seconds=int(part[8:]))
-        elif part.startswith('stale-while-revalidate='):
-            stale = timedelta(seconds=int(part[23:]))
-
-    if max_age is None or stale is None:
-        raise NotImplementedError(f'Unsupported Cache-Control header: {header}')
-
-    return max_age, stale
-
-
 class CacheControlMiddleware:
     """
     Add Cache-Control header from `@cache_control` decorator.
