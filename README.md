@@ -19,8 +19,8 @@ For frontend implementations, please see [openaedmap-frontend](https://github.co
 
 ### 🌐 Deployed Instances
 
-- **Production** — main branch: [openaedmap.org](https://openaedmap.org)
-- **Development** — dev branch: [dev.openaedmap.org](https://dev.openaedmap.org)
+- **Production:** [openaedmap.org](https://openaedmap.org)
+- **Development:** [dev.openaedmap.org](https://dev.openaedmap.org), automatically deployed after main passes CI.
 
 ## 🛠️ Local Development
 

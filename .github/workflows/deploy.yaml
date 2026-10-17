@@ -1,112 +1,162 @@
-name: deploy
+name: CI
 
 on:
+  pull_request:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - "*.md"
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Deployment tag"
+        description: Deployment tag
         required: true
         type: choice
-        default: "main"
-        options:
-          - main
-          - dev
+        default: dev
+        options: [dev, main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  deploy:
-    name: Deploy
+  check:
+    name: Check and build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    env:
+      SENTRY_RELEASE: ${{ github.sha }}
+      TAG: ${{ inputs.tag || 'dev' }}
+      UV_LOCKED: "true"
     steps:
-      - uses: actions/checkout@v6
-      - uses: nixbuild/nix-quick-install-action@v34
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          nix_version: 2.31.2
-
-      - name: Generate cache key
-        run: |
-          nixpkgs_hash=$(grep -Eom1 'archive/[0-9a-f]{40}\.tar\.gz' shell.nix | cut -d'/' -f2 | cut -d'.' -f1)
-          echo "NIXPKGS_HASH=$nixpkgs_hash" >> "$GITHUB_ENV"
-          echo "CACHE_KEY=${{ runner.os }}-$nixpkgs_hash" >> "$GITHUB_ENV"
-
-      - uses: nix-community/cache-nix-action@v7
+          persist-credentials: false
+      - uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
-          primary-key: nix-${{ env.CACHE_KEY }}
-
-      - name: Setup NIX_PATH
-        run: |
-          path=$(nix eval --impure --expr "(import (fetchTarball \"https://github.com/NixOS/nixpkgs/archive/${{ env.NIXPKGS_HASH }}.tar.gz\") {}).path")
-          echo "NIX_PATH=nixpkgs=$path" >> "$GITHUB_ENV"
-
-      - name: Get cache directories
-        id: cache-dirs
-        run: |
-          nix-shell -p uv --run "
-            echo \"UV_CACHE=\$(uv cache dir)\"
-          " | tee -a "$GITHUB_OUTPUT"
-
-      - name: Cache files and packages
-        uses: actions/cache@v4
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix', 'shell.nix', 'uv.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+          save: ${{ github.event_name != 'pull_request' }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: uv-cache
         with:
-          key: pkg-${{ env.CACHE_KEY }}-${{ hashFiles('uv.lock') }}
-          path: |
-            ${{ steps.cache-dirs.outputs.UV_CACHE }}
-            .venv
-
-      - name: Configure SSH
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix') }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix') }}-
+      - name: Lint, type-check and test
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id && chmod 600 ~/.ssh/id
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-          echo "Host remote
-            HostName ${{ secrets.SSH_HOST }}
-            User ${{ secrets.SSH_USER }}
-            Port ${{ secrets.SSH_PORT }}
-            IdentityFile ~/.ssh/id
-          " > ~/.ssh/config
-
-      - name: Deploy on remote
+          nix-shell --pure --keep UV_LOCKED --run '
+            set -euo pipefail
+            ruff check .
+            ruff format --check .
+            ty check
+            nixfmt --check *.nix
+            shellcheck scripts/*.sh
+            actionlint
+            zizmor .github
+            uv run pytest --junitxml=test-results.xml
+          '
+      - name: Build and smoke-test the release image
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            tag="${{ inputs.tag }}"
-          else
-            tag=dev
-          fi
-
-          printf '::group::Build image streamer (%s)\n' "$tag"
-          nix-shell --pure --run true
-          image_streamer=$(TAG="$tag" SENTRY_RELEASE="$GITHUB_SHA" nix-build --no-out-link)
-          printf '::endgroup::\n'
-
-          printf '::group::Stream image to remote Docker\n'
-          export image_streamer
           # shellcheck disable=SC2016
-          nix-shell -p zstd --run 'set -o pipefail; "$image_streamer" | zstd -T0 -1' | ssh remote 'docker load'
-          printf '::endgroup::\n'
+          nix-shell --pure --keep SENTRY_RELEASE --keep TAG --keep UV_LOCKED --run '
+            set -euo pipefail
+            UV_PROJECT_ENVIRONMENT=.venv-runtime uv sync --locked --no-default-groups
+            streamer=$(nix-build --no-out-link)
+            "$streamer" > backend.tar
+          '
+          docker load < backend.tar
+          docker run --rm --entrypoint python \
+            -v "$PWD/scripts:/checks:ro" "backend:$TAG" /checks/smoke_image.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name != 'pull_request'
+        with:
+          name: backend-image
+          path: backend.tar
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: test-results
+          path: test-results.xml
+      - name: Prune unused package-cache entries
+        if: github.event_name != 'pull_request'
+        run: nix-shell --pure --keep UV_LOCKED --run 'uv cache prune'
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request' && steps.uv-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cache/uv
+          key: ${{ steps.uv-cache.outputs.cache-primary-key }}
 
-          printf '::group::Deploy on remote\n'
-          ssh remote <<\EOF
-            set -e
-            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-              tag="${{ inputs.tag }}"
-            else
-              tag=dev
-            fi
-
-            echo "Fetching latest changes from the git repository"
-            cd "$tag"
-            git fetch origin "${{ github.sha }}"
-            git reset --hard FETCH_HEAD
-
-            echo "Restarting containers"
-            docker compose down --remove-orphans
-            TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
-
-            echo "Pruning dangling images"
-            docker image prune -f
+  deploy:
+    name: Deploy tested image
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-${{ inputs.tag || 'dev' }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag || 'dev' }}
+      RELEASE: ${{ github.sha }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: backend-image
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host remote
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id
+            ControlMaster auto
+            ControlPersist 60
+            ControlPath ~/.ssh/control-%C
           EOF
-          printf '::endgroup::\n'
+      - name: Load and deploy the verified image
+        run: |
+          old_image=$(ssh remote bash -s -- "$TAG" <<'EOF'
+          set -euo pipefail
+          cd "$1"
+          container=$(docker compose ps --quiet app)
+          if [[ -n "$container" ]]; then
+            docker inspect --format '{{.Image}}' "$container"
+          else
+            docker image inspect --format '{{.Id}}' "backend:$1" 2>/dev/null || true
+          fi
+          EOF
+          )
+          ssh remote 'docker load' < backend.tar
+          ssh remote bash -s -- "$TAG" "$RELEASE" "$old_image" <<'EOF'
+          set -euo pipefail
+          tag=$1
+          release=$2
+          old_image=${3:-}
+          cd "$tag"
+          git fetch origin "$release"
+          git reset --hard FETCH_HEAD
+          docker compose down --remove-orphans
+          bash scripts/upgrade-postgres.sh "$old_image" "backend:$tag"
+          TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
+          EOF
+      - name: Close SSH connection
+        if: ${{ always() }}
+        run: ssh -O exit remote || true
