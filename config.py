@@ -20,6 +20,8 @@ POSTGRES_LOG = os.getenv('POSTGRES_LOG', '0').strip().lower() in ('1', 'true', '
 POSTGRES_URL = 'postgresql+asyncpg://postgres@/postgres?host=/tmp/openaedmap-postgres'
 VALKEY_URL = os.getenv('VALKEY_URL', 'unix:///tmp/openaedmap-valkey.sock?protocol=3')
 
+RESPONSE_CACHE_BYTES = int(os.getenv('RESPONSE_CACHE_BYTES', str(32 * 1024 * 1024)))
+
 DEFAULT_CACHE_MAX_AGE = timedelta(minutes=1)
 DEFAULT_CACHE_STALE = timedelta(minutes=5)
 

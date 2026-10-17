@@ -53,7 +53,7 @@ class CacheControlMiddleware:
             if message['type'] == 'http.response.start':
                 status_code: int = message['status']
 
-                if (200 <= status_code < 300 or status_code == 301) and context:
+                if (200 <= status_code < 300 or status_code in (301, 304)) and context:
                     headers = MutableHeaders(raw=message['headers'])
                     headers.setdefault('Cache-Control', context[0])
 
