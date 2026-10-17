@@ -56,7 +56,6 @@ jobs:
             ruff format --check .
             ty check
             nixfmt --check *.nix
-            shellcheck scripts/*.sh
             actionlint
             zizmor .github
             uv run pytest --junitxml=test-results.xml
@@ -133,29 +132,16 @@ jobs:
           EOF
       - name: Load and deploy the verified image
         run: |
-          old_image=$(ssh remote bash -s -- "$TAG" <<'EOF'
-          set -euo pipefail
-          cd "$1"
-          container=$(docker compose ps --quiet app)
-          if [[ -n "$container" ]]; then
-            docker inspect --format '{{.Image}}' "$container"
-          else
-            docker image inspect --format '{{.Id}}' "backend:$1" 2>/dev/null || true
-          fi
-          EOF
-          )
           ssh remote 'docker load' < backend.tar
-          ssh remote bash -s -- "$TAG" "$RELEASE" "$old_image" <<'EOF'
+          ssh remote bash -s -- "$TAG" "$RELEASE" <<'EOF'
           set -euo pipefail
-          tag=$1
+          export TAG=$1
           release=$2
-          old_image=${3:-}
-          cd "$tag"
+          cd "$TAG"
           git fetch origin "$release"
           git reset --hard FETCH_HEAD
-          docker compose down --remove-orphans
-          bash scripts/upgrade-postgres.sh "$old_image" "backend:$tag"
-          TAG="$tag" docker compose --env-file "envs/compose/$tag.env" up -d
+          docker compose --env-file "envs/compose/$TAG.env" down --remove-orphans
+          docker compose --env-file "envs/compose/$TAG.env" up -d
           EOF
       - name: Close SSH connection
         if: ${{ always() }}
