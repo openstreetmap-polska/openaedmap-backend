@@ -1,14 +1,11 @@
-from asyncio import TaskGroup
 from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Path
-from sentry_sdk import start_span
 from shapely import get_coordinates
 
 from middlewares.cache_control_middleware import cache_control
 from middlewares.skip_serialization import skip_serialization
-from models.db.country import Country
 from services.aed_service import AEDService
 from services.country_service import CountryService
 
@@ -19,30 +16,20 @@ router = APIRouter(prefix='/countries')
 @cache_control(timedelta(hours=1), stale=timedelta(days=7))
 @skip_serialization()
 async def get_names(language: str | None = None):
-    countries = await CountryService.get_all()
-    country_count_map: dict[str, int] = {}
-
-    with start_span(name='Counting AEDs'):
-
-        async def count_task(country: Country) -> None:
-            count = await AEDService.count_by_country_code(country.code)
-            country_count_map[country.code] = count
-
-        async with TaskGroup() as tg:
-            for country in countries:
-                tg.create_task(count_task(country))
+    countries = await CountryService.get_names()
+    country_count_map = await AEDService.count_by_country_codes(code for code, _ in countries)
 
     def limit_country_names(names: dict[str, str]) -> dict[str, str]:
         return {language: name} if (language and (name := names.get(language))) else names
 
     result = [
         {
-            'country_code': country.code,
-            'country_names': limit_country_names(country.names),
-            'feature_count': country_count_map[country.code],
-            'data_path': f'/api/v1/countries/{country.code}.geojson',
+            'country_code': code,
+            'country_names': limit_country_names(names),
+            'feature_count': country_count_map[code],
+            'data_path': f'/api/v1/countries/{code}.geojson',
         }
-        for country in countries
+        for code, names in countries
     ]
     result.append({
         'country_code': 'WORLD',

@@ -61,8 +61,11 @@ async def database(application_config):
 async def aed_database(database):
     from sqlalchemy import text
 
+    from services.aed_service import _COUNTRY_COUNTS_CACHE
+
     async with database.begin() as conn:
         await conn.execute(text('TRUNCATE aed, country'))
+    _COUNTRY_COUNTS_CACHE.clear()
     return database
 
 

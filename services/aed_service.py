@@ -8,8 +8,8 @@ from typing import NoReturn
 from cachetools import TTLCache
 from sentry_sdk import start_transaction, trace
 from shapely import Point
-from sqlalchemy import delete, func, select, text, update
-from sqlalchemy.dialects.postgresql import array_agg, insert
+from sqlalchemy import Unicode, column, delete, func, select, text, update, values
+from sqlalchemy.dialects.postgresql import array, array_agg, insert
 
 from config import AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
 from db import db_read, db_write
@@ -20,7 +20,7 @@ from planet_diffs import get_planet_diffs
 from services.state_service import StateService
 from utils import retry_exponential
 
-_COUNTRY_BY_COUNTRY_CODE_CACHE = TTLCache(maxsize=1024, ttl=3600)
+_COUNTRY_COUNTS_CACHE = TTLCache(maxsize=1024, ttl=3600)
 _OVERPASS_QUERY = 'node[emergency=defibrillator];out meta qt;'
 
 
@@ -43,14 +43,29 @@ class AEDService:
 
     @staticmethod
     @trace
-    async def count_by_country_code(country_code: str) -> int:
-        result = _COUNTRY_BY_COUNTRY_CODE_CACHE.get(country_code)
-        if result is None:
+    async def count_by_country_codes(country_codes: Iterable[str]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        missing = []
+        for code in dict.fromkeys(country_codes):
+            count = _COUNTRY_COUNTS_CACHE.get(code)
+            if count is None:
+                missing.append((code,))
+            else:
+                counts[code] = count
+
+        if missing:
+            codes = values(column('code', Unicode(8))).data(missing).alias('codes')
+            count = (
+                select(func.count())
+                .select_from(AED)
+                .where(AED.country_codes.contains(array([codes.c.code])))
+                .scalar_subquery()
+            )
             async with db_read() as session:
-                stmt = select(func.count()).select_from(AED).where(AED.country_codes.contains([country_code]))
-                result = (await session.execute(stmt)).scalar_one()
-                _COUNTRY_BY_COUNTRY_CODE_CACHE[country_code] = result
-        return result
+                rows = (await session.execute(select(codes.c.code, count))).tuples().all()
+            _COUNTRY_COUNTS_CACHE.update(rows)
+            counts.update(rows)
+        return counts
 
     @staticmethod
     @trace

@@ -1,4 +1,4 @@
-from asyncio import AbstractEventLoop, Semaphore, TaskGroup, get_running_loop, wrap_future
+from asyncio import AbstractEventLoop, Semaphore, get_running_loop, wrap_future
 from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
@@ -40,15 +40,7 @@ class TileService:
             bbox = _tile_to_bbox(z, x, y)
             if z <= TILE_COUNTRIES_MAX_Z:
                 countries = await CountryService.get_intersecting(bbox)
-                counts: dict[str, int] = {}
-
-                async def count_task(country: Country) -> None:
-                    counts[country.name] = await AEDService.count_by_country_code(country.code)
-
-                with start_span(name='Counting AEDs'):
-                    async with TaskGroup() as tg:
-                        for country in countries:
-                            tg.create_task(count_task(country))
+                counts = await AEDService.count_by_country_codes(country.code for country in countries)
                 render = partial(_encode_country_tile, z, bbox, countries, counts)
             else:
                 async with db_read() as session:
@@ -169,8 +161,8 @@ def _encode_country_tile(z: int, bbox: BBox, countries: Sequence[Country], count
                         'properties': {
                             'country_name': country.name,
                             'country_code': country.code,
-                            'point_count': counts[country.name],
-                            'point_count_abbreviated': abbreviate(counts[country.name]),
+                            'point_count': counts[country.code],
+                            'point_count_abbreviated': abbreviate(counts[country.code]),
                         },
                     }
                     for country in countries

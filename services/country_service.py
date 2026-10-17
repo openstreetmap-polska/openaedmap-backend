@@ -33,10 +33,10 @@ class CountryService:
 
     @staticmethod
     @trace
-    async def get_all() -> Sequence[Country]:
+    async def get_names() -> Sequence[tuple[str, dict[str, str]]]:
         async with db_read() as session:
-            stmt = select(Country)
-            return (await session.scalars(stmt)).all()
+            stmt = select(Country.code, Country.names)
+            return (await session.execute(stmt)).tuples().all()
 
     @classmethod
     @trace

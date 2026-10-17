@@ -86,21 +86,40 @@ async def test_country_tiles_keep_names_and_country_counts(aed_database):
                     'geometry': box(1, -3, 3, -1),
                     'label_position': Point(2, -2),
                 },
+                {
+                    'code': 'OTHER',
+                    'names': {'default': 'Example'},
+                    'geometry': box(4, -3, 6, -1),
+                    'label_position': Point(5, -2),
+                },
             ],
         )
     await seed_aeds(
         aed_database,
         [
             {'id': 71, 'version': 1, 'tags': {}, 'position': Point(2, -2), 'country_codes': ['TEST']},
+            {'id': 72, 'version': 1, 'tags': {}, 'position': Point(5, -2), 'country_codes': ['OTHER']},
+            {'id': 73, 'version': 1, 'tags': {}, 'position': Point(5, -2), 'country_codes': ['OTHER']},
         ],
     )
     tile = mvt.decode(await TileService.get_tile(3, 4, 4))
-    assert len(tile['countries']['features']) == 1
-    assert tile['defibrillators']['features'][0]['properties'] == {
-        'country_name': 'Example',
-        'country_code': 'TEST',
-        'point_count': 1,
-        'point_count_abbreviated': '1',
+    assert len(tile['countries']['features']) == 2
+    properties = {
+        feature['properties']['country_code']: feature['properties'] for feature in tile['defibrillators']['features']
+    }
+    assert properties == {
+        'TEST': {
+            'country_name': 'Example',
+            'country_code': 'TEST',
+            'point_count': 1,
+            'point_count_abbreviated': '1',
+        },
+        'OTHER': {
+            'country_name': 'Example',
+            'country_code': 'OTHER',
+            'point_count': 2,
+            'point_count_abbreviated': '2',
+        },
     }
 
 

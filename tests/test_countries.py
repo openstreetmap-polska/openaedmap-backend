@@ -5,7 +5,16 @@ from shapely import Point, box
 
 
 @pytest.mark.asyncio
-async def test_country_names_include_counts_and_world_total(aed_database):
+@pytest.mark.parametrize(
+    ('language', 'expected_names'),
+    [
+        (None, {'default': 'Japan', 'JA': '日本'}),
+        ('JA', {'JA': '日本'}),
+        ('missing', {'default': 'Japan', 'JA': '日本'}),
+    ],
+    ids=['all-names', 'requested-language', 'missing-language'],
+)
+async def test_country_names_include_counts_and_world_total(aed_database, language, expected_names):
     from sqlalchemy import insert
 
     from api.v1.countries import get_names
@@ -18,7 +27,7 @@ async def test_country_names_include_counts_and_world_total(aed_database):
             [
                 {
                     'code': 'NAMES',
-                    'names': {'default': '日本'},
+                    'names': {'default': 'Japan', 'JA': '日本'},
                     'geometry': box(1, 1, 3, 3),
                     'label_position': Point(2, 2),
                 }
@@ -36,11 +45,11 @@ async def test_country_names_include_counts_and_world_total(aed_database):
                 }
             ],
         )
-    response = await get_names()
+    response = await get_names(language)
     assert json.loads(response.body) == [
         {
             'country_code': 'NAMES',
-            'country_names': {'default': '日本'},
+            'country_names': expected_names,
             'feature_count': 1,
             'data_path': '/api/v1/countries/NAMES.geojson',
         },
@@ -51,6 +60,64 @@ async def test_country_names_include_counts_and_world_total(aed_database):
             'data_path': '/api/v1/countries/WORLD.geojson',
         },
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('country_count', [0, 1, 32], ids=['no-countries', 'one-country', 'many-countries'])
+async def test_country_names_database_work_does_not_fan_out(aed_database, country_count):
+    from sqlalchemy import event, insert
+
+    from api.v1.countries import get_names
+    from models.db.country import Country
+
+    if country_count:
+        async with aed_database.begin() as conn:
+            await conn.execute(
+                insert(Country),
+                [
+                    {
+                        'code': f'C{i:02}',
+                        'names': {'default': f'Country {i}'},
+                        'geometry': box(1, 1, 3, 3),
+                        'label_position': Point(2, 2),
+                    }
+                    for i in range(country_count)
+                ],
+            )
+    statements = []
+    active_connections = 0
+    peak_connections = 0
+
+    def record_statement(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    def checkout(dbapi_connection, connection_record, connection_proxy):
+        nonlocal active_connections, peak_connections
+        active_connections += 1
+        peak_connections = max(peak_connections, active_connections)
+
+    def checkin(dbapi_connection, connection_record):
+        nonlocal active_connections
+        active_connections -= 1
+
+    listeners = [
+        ('before_cursor_execute', record_statement),
+        ('checkout', checkout),
+        ('checkin', checkin),
+    ]
+    for name, listener in listeners:
+        event.listen(aed_database.sync_engine, name, listener)
+    try:
+        response = await get_names()
+    finally:
+        for name, listener in listeners:
+            event.remove(aed_database.sync_engine, name, listener)
+    countries = json.loads(response.body)
+    assert len(countries) == country_count + 1
+    assert all(country['feature_count'] == 0 for country in countries)
+    assert len(statements) <= 2
+    assert peak_connections == 1
+    assert active_connections == 0
 
 
 @pytest.mark.asyncio
