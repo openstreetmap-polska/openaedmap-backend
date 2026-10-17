@@ -3,11 +3,7 @@
 }:
 
 let
-  # Update packages with `nixpkgs-update` command
-  pkgs =
-    import
-      (fetchTarball "https://github.com/NixOS/nixpkgs/archive/b6018f87da91d19d0ab4cf979885689b469cdd41.tar.gz")
-      { };
+  pkgs = import ./nixpkgs.nix;
 
   pythonLibs = with pkgs; [
     file.out
@@ -51,9 +47,14 @@ let
     ]
     ++ lib.optionals isDevelopment [
       git
+      nix
       uv
       ruff
-      jq
+      ty
+      actionlint
+      nixfmt
+      shellcheck
+      zizmor
       (writeShellScriptBin "alembic-migration" ''
         set -e
         name=$1
@@ -136,14 +137,14 @@ let
     ]
     ++ lib.optionals isDevelopment [
       (writeShellScriptBin "nixpkgs-update" ''
-        set -e
-        hash=$(
-          curl -sSL \
-            https://prometheus.nixos.org/api/v1/query \
-            -d 'query=channel_revision{channel="nixos-25.11"}' \
-          | jq -r ".data.result[0].metric.revision")
-        sed -i "s|nixpkgs/archive/[0-9a-f]\\{40\\}|nixpkgs/archive/$hash|" shell.nix
-        echo "Nixpkgs updated to $hash"
+        set -euo pipefail
+        revision=$(curl -fsSL https://channels.nixos.org/nixpkgs-unstable/git-revision)
+        [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+        hash=$(nix-prefetch-url --unpack "https://github.com/NixOS/nixpkgs/archive/$revision.tar.gz")
+        sed -i \
+          -e "s|nixpkgs/archive/[0-9a-f]\{40\}|nixpkgs/archive/$revision|" \
+          -e "s|sha256 = \"[^\"]*\"|sha256 = \"$hash\"|" nixpkgs.nix
+        echo "Nixpkgs updated to $revision"
       '')
       (writeShellScriptBin "docker-build" ''
         set -e
@@ -162,13 +163,9 @@ let
       export PYTHONNOUSERSITE=1
       export PYTHONPATH=""
 
-      current_python=$(readlink -e .venv/bin/python || echo "")
-      current_python=''${current_python%/bin/*}
-      [ "$current_python" != "${python'}" ] && rm -rf .venv/
-
       echo "Installing Python dependencies"
       export UV_PYTHON="${python'}/bin/python"
-      uv sync --frozen
+      uv sync || exit $?
 
       echo "Activating Python virtual environment"
       source .venv/bin/activate
