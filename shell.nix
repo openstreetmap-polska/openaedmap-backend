@@ -32,7 +32,7 @@ let
       coreutils
       gnugrep
       (lib.getBin curl)
-      (postgresql_17.withPackages (ps: [
+      (postgresql_18.withPackages (ps: [
         (runCommand "postgis-runtime-${ps.postgis.version}" { } ''
           cp -a ${ps.postgis}/. "$out"
           chmod -R u+w "$out"
@@ -42,7 +42,6 @@ let
             "$out"/share/postgresql/extension/postgis_raster*
         '')
       ]))
-      valkey
 
     ]
     ++ lib.optionals isDevelopment [
@@ -55,17 +54,8 @@ let
       nixfmt
       shellcheck
       zizmor
-      (writeShellScriptBin "alembic-migration" ''
-        set -e
-        name=$1
-        if [ -z "$name" ]; then
-          read -p "Database migration name: " name
-        fi
-        alembic -c config/alembic.ini revision --autogenerate --message "$name"
-      '')
     ]
     ++ [
-      (writeShellScriptBin "alembic-upgrade" "alembic -c config/alembic.ini upgrade head")
 
       # -- Supervisor
       (writeShellScriptBin "dev-start" ''
@@ -104,8 +94,7 @@ let
           sleep 0.1
         done
 
-        echo "Postgres started, running migrations"
-        alembic-upgrade
+        echo "Postgres started"
       '')
       (writeShellScriptBin "dev-stop" ''
         set -e

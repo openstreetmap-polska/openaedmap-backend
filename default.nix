@@ -61,7 +61,8 @@ dockerTools.streamLayeredImage {
     mkdir app && cd app
     mkdir -p data/postgres data/photos
     cp "${./.}"/*.py .
-    cp -r "${./.}"/alembic_ .
+    cp "${./.}"/schema.sql .
+    cp -r "${./.}"/sql .
     cp -r "${./.}"/api .
     cp -r "${./.}"/config .
     cp -r "${./.}"/envs .

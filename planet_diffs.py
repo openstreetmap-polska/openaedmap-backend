@@ -1,103 +1,168 @@
 import gzip
 import re
-from asyncio import TaskGroup, timeout
-from collections.abc import Sequence
+from asyncio import Semaphore, TaskGroup, timeout, to_thread
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from itertools import chain
+from io import BytesIO
+from typing import NoReturn
+from xml.parsers import expat
 
-import xmltodict
-from sentry_sdk import start_span, trace
-
-from config import AED_REBUILD_THRESHOLD, PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
-from utils import HTTP, retry_exponential
-from xmltodict_postprocessor import xmltodict_postprocessor
-
-_action_open_re = re.compile(r'<(create|modify|delete)>')
-_action_close_re = re.compile(r'</(create|modify|delete)>')
+from config import PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
+from models.aed import AED, ConflictingNodeVersionError, NodeChange, RemovedNode
+from utils import HTTP
 
 
-@trace
-async def get_planet_diffs(last_update: float) -> tuple[Sequence[dict], float]:
+@dataclass(frozen=True, slots=True)
+class ReplicationBatch:
+    first_sequence: int
+    last_sequence: int
+    timestamp: float
+    changes: tuple[NodeChange, ...]
+
+
+def reduce_changes(changes: Iterable[NodeChange]) -> tuple[NodeChange, ...]:
+    latest: dict[int, NodeChange] = {}
+    for change in changes:
+        previous = latest.get(change.id)
+        if previous is None or change.version > previous.version:
+            latest[change.id] = change
+        elif change.version == previous.version and change != previous:
+            raise ConflictingNodeVersionError(f'Conflicting node version: {change.id}/{change.version}')
+    return tuple(latest.values())
+
+
+async def get_planet_diffs(sequence: int) -> ReplicationBatch:
     async with timeout(PLANET_DIFF_TIMEOUT.total_seconds()):
-        sequence_numbers = []
-        sequence_timestamps = []
+        head, _ = await get_replication_state()
+        end = min(head, sequence + 8)
+        if end <= sequence:
+            _, timestamp = await get_replication_state(sequence)
+            return ReplicationBatch(sequence + 1, sequence, timestamp, ())
+        slots = Semaphore(4)
 
-        while True:
-            next_sequence_number = sequence_numbers[-1] - 1 if sequence_numbers else None
-            sequence_number, sequence_timestamp = await _get_state(next_sequence_number)
+        async def fetch(number: int) -> tuple[NodeChange, ...]:
+            async with slots:
+                response = await HTTP.get(f'{PLANET_REPLICA_URL}{_format_sequence_number(number)}.osc.gz')
+                response.raise_for_status()
+                return await to_thread(parse_diff, response.content)
 
-            if sequence_timestamp <= last_update:
-                break
-
-            sequence_numbers.append(sequence_number)
-            sequence_timestamps.append(sequence_timestamp)
-
-        if not sequence_numbers:
-            return (), last_update
-
-        with start_span(name=f'Processing {len(sequence_numbers)} planet diffs'):
-
-            @retry_exponential(AED_REBUILD_THRESHOLD)
-            async def _get_planet_diff(sequence_number: int) -> tuple[int, list[dict]]:
-                path = f'{_format_sequence_number(sequence_number)}.osc.gz'
-                r = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
-                r.raise_for_status()
-
-                xml = gzip.decompress(r.content).decode()
-                xml = _format_actions(xml)
-                actions: list[dict] = xmltodict.parse(
-                    xml,
-                    postprocessor=xmltodict_postprocessor,
-                    force_list=('action', 'node', 'way', 'relation', 'member', 'tag', 'nd'),
-                )['osmChange']['action']
-
-                node_actions: list[dict] = []
-
-                for action in actions:
-                    # ignore everything that is not a node
-                    if 'node' in action:
-                        action.pop('way', None)
-                        action.pop('relation', None)
-                        node_actions.append(action)
-
-                return sequence_number, node_actions
-
-            async with TaskGroup() as tg:
-                tasks = [tg.create_task(_get_planet_diff(sequence_number)) for sequence_number in sequence_numbers]
-
-        result = [t.result() for t in tasks]
-        result.sort(key=lambda x: x[0])  # sort by sequence number in ascending order
-
-        data = tuple(chain.from_iterable(data for _, data in result))
-        data_timestamp = sequence_timestamps[0]
-        return data, data_timestamp
+        async with TaskGroup() as tasks:
+            jobs = [tasks.create_task(fetch(number)) for number in range(sequence + 1, end + 1)]
+        _, timestamp = await get_replication_state(end)
+        changes = await to_thread(reduce_changes, (change for job in jobs for change in job.result()))
+        return ReplicationBatch(sequence + 1, end, timestamp, changes)
 
 
-@retry_exponential(AED_REBUILD_THRESHOLD)
-@trace
-async def _get_state(sequence_number: int | None) -> tuple[int, float]:
-    path = 'state.txt' if sequence_number is None else f'{_format_sequence_number(sequence_number)}.state.txt'
-    r = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
-    r.raise_for_status()
+async def sequence_before(timestamp: float) -> int:
+    """Locate a strict lower bracket for the snapshot's source timestamp."""
+    high, high_time = await get_replication_state()
+    if high_time < timestamp:
+        raise ValueError('Replication feed is older than the snapshot')
+    step = 1
+    low = high
+    while True:
+        low = max(1, high - step)
+        _, low_time = await get_replication_state(low)
+        if low_time < timestamp:
+            break
+        if low == 1:
+            raise ValueError('Snapshot precedes available replication history')
+        step *= 2
+    while high - low > 1:
+        mid = (low + high) // 2
+        _, mid_time = await get_replication_state(mid)
+        if mid_time < timestamp:
+            low = mid
+        else:
+            high = mid
+    return low
 
-    text = r.text.replace('\\:', ':')
-    sequence_number = int(re.search(r'sequenceNumber=(\d+)', text).group(1))  # pyright: ignore [reportOptionalMemberAccess]
-    sequence_date_str = re.search(r'timestamp=(\S+)', text).group(1)  # pyright: ignore [reportOptionalMemberAccess]
-    sequence_date = datetime.strptime(sequence_date_str, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC)
-    sequence_timestamp = sequence_date.timestamp()
-    return sequence_number, sequence_timestamp
+
+async def get_replication_state(sequence: int | None = None) -> tuple[int, float]:
+    path = 'state.txt' if sequence is None else f'{_format_sequence_number(sequence)}.state.txt'
+    response = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
+    response.raise_for_status()
+    text = response.text.replace('\\:', ':')
+    number = re.search(r'^sequenceNumber=(\d+)$', text, re.MULTILINE)
+    date = re.search(r'^timestamp=(\S+)$', text, re.MULTILINE)
+    if number is None or date is None:
+        raise ValueError('Invalid replication state')
+    number = int(number[1])
+    if sequence is not None and number != sequence:
+        raise ValueError('Replication state sequence mismatch')
+    timestamp = datetime.strptime(date[1], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC).timestamp()
+    return number, timestamp
 
 
-def _format_sequence_number(sequence_number: int) -> str:
-    result = f'{sequence_number:09d}'
-    result = '/'.join(result[i : i + 3] for i in range(0, 9, 3))
-    return result
+def _format_sequence_number(sequence: int) -> str:
+    if not 0 <= sequence <= 999999999:
+        raise ValueError('Invalid replication sequence')
+    value = f'{sequence:09d}'
+    return '/'.join(value[i : i + 3] for i in range(0, 9, 3))
 
 
-def _format_actions(xml: str) -> str:
-    # <create> -> <action type="create">
-    # </create> -> </action>
-    # etc.
-    xml = _action_open_re.sub(r'<action type="\1">', xml)
-    xml = _action_close_re.sub(r'</action>', xml)
-    return xml
+def parse_diff(content: bytes) -> tuple[NodeChange, ...]:
+    """Expat validates complete XML while materializing only node state."""
+    parser = expat.ParserCreate()
+    depth = 0
+    action = None
+    node: tuple[dict[str, str], dict[str, str]] | None = None
+    changes: list[NodeChange] = []
+    closed = False
+
+    def start(name: str, attrs: dict[str, str]) -> None:
+        nonlocal depth, action, node
+        depth += 1
+        if depth == 1 and name != 'osmChange':
+            raise ValueError('Expected osmChange document')
+        if depth == 2:
+            if name not in ('create', 'modify', 'delete'):
+                raise ValueError(f'Unknown replication action: {name}')
+            action = name
+        elif depth == 3 and name == 'node':
+            node = (attrs, {})
+        elif depth == 4 and name == 'tag' and node is not None:
+            _, tags = node
+            key, value = attrs['k'], attrs['v']
+            if key in tags:
+                raise ValueError('Duplicate node tag')
+            tags[key] = value
+
+    def end(name: str) -> None:
+        nonlocal depth, node, closed
+        if depth == 3 and name == 'node':
+            assert node is not None  # noqa: S101 - Expat balances element callbacks
+            attrs, tags = node
+            id, version = int(attrs['id']), int(attrs['version'])
+            if not 0 < id < 2**63 or version <= 0:
+                raise ValueError('Invalid node identity/version')
+            if (
+                action != 'delete'
+                and attrs.get('visible', 'true') != 'false'
+                and tags.get('emergency') == 'defibrillator'
+            ):
+                lon, lat = float(attrs['lon']), float(attrs['lat'])
+                if not -180 <= lon <= 180 or not -90 <= lat <= 90:
+                    raise ValueError('Invalid node coordinates')
+                changes.append(AED(id, version, tags, lon, lat))
+            else:
+                changes.append(RemovedNode(id, version))
+            node = None
+        if depth == 1:
+            closed = True
+        depth -= 1
+
+    def reject_doctype(*_) -> NoReturn:
+        raise ValueError('Document types are not supported')
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.StartDoctypeDeclHandler = reject_doctype
+    with gzip.GzipFile(fileobj=BytesIO(content)) as stream:
+        while chunk := stream.read(65536):
+            parser.Parse(chunk, False)
+    parser.Parse(b'', True)
+    if not closed:
+        raise ValueError('Incomplete replication document')
+    return reduce_changes(changes)

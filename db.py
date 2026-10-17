@@ -1,61 +1,56 @@
-from asyncio import AbstractEventLoop, get_running_loop
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from weakref import WeakKeyDictionary
+from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from valkey.asyncio import ConnectionPool, Valkey
+import asyncpg
 
-from config import POSTGRES_URL, VALKEY_URL
+from config import POSTGRES_URL
 
-_db_engine = create_async_engine(
-    POSTGRES_URL,
-    query_cache_size=128,
-    pool_size=10,
-    max_overflow=-1,
-)
+_pool: asyncpg.Pool | None = None
 
 
-@asynccontextmanager
-async def db_read():
-    """
-    Get a database session for reading.
-    """
-    async with AsyncSession(
-        _db_engine,
-        expire_on_commit=False,
-        close_resets_only=False,
-    ) as session:
-        yield session
+async def open_database() -> None:
+    global _pool
+    pool = await asyncpg.create_pool(
+        POSTGRES_URL,
+        min_size=1,
+        max_size=6,
+        command_timeout=120,
+        server_settings={'application_name': 'openaedmap', 'jit': 'off'},
+    )
+    try:
+        schema = Path(__file__).with_name('schema.sql').read_text()
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(schema)
+    except BaseException:
+        await pool.close()
+        raise
+    _pool = pool
 
 
-@asynccontextmanager
-async def db_write():
-    """
-    Get a database session for writing, automatically committing on exit.
-    """
-    async with AsyncSession(
-        _db_engine,
-        expire_on_commit=False,
-        close_resets_only=False,
-    ) as session:
-        yield session
-        await session.commit()
-
-
-_valkey_pools: WeakKeyDictionary[AbstractEventLoop, ConnectionPool] = WeakKeyDictionary()
-
-
-def _valkey_pool() -> ConnectionPool:
-    loop = get_running_loop()
-    if pool := _valkey_pools.get(loop):
-        return pool
-
-    pool = ConnectionPool.from_url(VALKEY_URL)
-    _valkey_pools[loop] = pool
-    return pool
+async def close_database() -> None:
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
 
 
 @asynccontextmanager
-async def valkey():
-    async with Valkey(connection_pool=_valkey_pool()) as r:
-        yield r
+async def connection() -> AsyncGenerator[asyncpg.Connection]:
+    if _pool is None:
+        raise RuntimeError('Database has not been opened')
+    async with _pool.acquire() as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def publication(invalidate: Callable[[], None]) -> AsyncGenerator[asyncpg.Connection]:
+    async with connection() as conn:
+        try:
+            async with conn.transaction():
+                await conn.execute('SELECT id FROM map_revision FOR UPDATE')
+                yield conn
+        finally:
+            # A cancelled commit can have reached PostgreSQL. Mark old payloads stale
+            # before releasing the connection, including when the outcome is uncertain.
+            invalidate()

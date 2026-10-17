@@ -43,13 +43,24 @@ h2corn main:app
 
 Navigate to http://localhost:8000 to access the web app locally.
 
+The server uses one origin process with PostgreSQL/PostGIS. Startup applies `schema.sql` and starts
+country and AED synchronization. Uploaded photos live in `data/photos`; keep both that directory
+and the PostgreSQL data volume when replacing an installation.
+
+The container uses PostgreSQL 18. Before switching an existing PostgreSQL 17 installation, stop its
+containers and run `bash scripts/upgrade-postgres.sh OLD_IMAGE NEW_IMAGE` from the installation
+directory. Use the old image's immutable ID, captured before loading its replacement. The script
+restores roles and data, compares every application table, applies the schema and analyzes the new
+cluster before publishing `data/postgres18`. It retains `data/postgres17` and the logical backup.
+The deployment workflow performs this conversion when needed.
+
 `X-Version`, the user agent, and OSM edit metadata identify the Git revision automatically.
 Local edits add a `-dirty` suffix; built images embed their source revision.
 
 ### Tests
 
-Inside the development shell, run `uv run --group test pytest`.
-The suite starts disposable PostgreSQL/PostGIS and Valkey instances and cleans them up afterward.
+Inside the development shell, run `uv run pytest`.
+The suite starts disposable PostgreSQL/PostGIS and cleans it up afterward.
 
 ### Cleanup
 

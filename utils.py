@@ -68,12 +68,5 @@ def retry_exponential(timeout: timedelta | float | None, *, start: float = 1):
     return decorator
 
 
-def abbreviate(num: int) -> str:
-    for suffix, divisor in (('m', 1_000_000), ('k', 1_000)):
-        if num >= divisor:
-            return f'{num / divisor:.1f}{suffix}'
-    return str(num)
-
-
 def get_wikimedia_commons_url(path: str) -> str:
     return f'https://commons.wikimedia.org/wiki/{path}'

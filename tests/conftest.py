@@ -1,15 +1,9 @@
 # Fixture commands use the project development tools and fixture-owned paths.
 # ruff: noqa: S603, S607
-
 import subprocess
-from contextlib import asynccontextmanager
-from time import monotonic, sleep
 
 import pytest
 import pytest_asyncio
-from valkey import Valkey as SyncValkey
-from valkey.asyncio import Valkey
-from valkey.exceptions import ConnectionError as CacheConnectionError
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -33,83 +27,34 @@ def application_config(tmp_path_factory):
             patch.delenv('SENTRY_DSN', raising=False)
             import config
 
-            patch.setattr(config, 'POSTGRES_URL', f'postgresql+asyncpg://postgres@/postgres?host={pgsocket}')
+            patch.setattr(config, 'POSTGRES_URL', f'postgresql://postgres@/postgres?host={pgsocket}')
+            patch.setattr(config, 'PHOTOS_DIR', root / 'photos')
             yield
     finally:
         subprocess.run(['pg_ctl', '-D', str(pgdata), '-m', 'immediate', '-w', 'stop'], check=True, capture_output=True)
 
 
 @pytest_asyncio.fixture(scope='session', loop_scope='session')
-async def database(application_config):
-    from sqlalchemy import text
+async def postgres_pool(application_config):
+    from db import close_database, open_database
 
-    from db import _db_engine
-    from models.db.aed import AED
-    from models.db.country import Country
-
+    await open_database()
     try:
-        async with _db_engine.begin() as conn:
-            await conn.execute(text('CREATE EXTENSION postgis'))
-            await conn.run_sync(AED.__table__.create)
-            await conn.run_sync(Country.__table__.create)
-        yield _db_engine
+        yield
     finally:
-        await _db_engine.dispose()
+        await close_database()
 
 
 @pytest_asyncio.fixture(loop_scope='session')
-async def aed_database(database):
-    from sqlalchemy import text
+async def database(postgres_pool):
+    from db import connection
+    from services.byte_cache import byte_cache
 
-    from services.aed_service import _COUNTRY_COUNTS_CACHE
-
-    async with database.begin() as conn:
-        await conn.execute(text('TRUNCATE aed, country'))
-    _COUNTRY_COUNTS_CACHE.clear()
-    return database
-
-
-@pytest.fixture(scope='session')
-def cache_url(tmp_path_factory):
-    root = tmp_path_factory.mktemp('valkey')
-    socket = root / 'cache.sock'
-    with (root / 'valkey.log').open('wb') as log:
-        process = subprocess.Popen(
-            ['valkey-server', '--port', '0', '--unixsocket', str(socket), '--save', '', '--appendonly', 'no'],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-        )
-        try:
-            client = SyncValkey(unix_socket_path=str(socket), socket_timeout=1, socket_connect_timeout=1)
-            try:
-                deadline = monotonic() + 10
-                while True:
-                    try:
-                        client.ping()
-                        break
-                    except CacheConnectionError:
-                        if process.poll() is not None or monotonic() >= deadline:
-                            raise
-                        sleep(0.01)
-            finally:
-                client.close()
-            yield f'unix://{socket}'
-        finally:
-            process.terminate()
-            process.wait(timeout=10)
-
-
-@pytest_asyncio.fixture(loop_scope='session')
-async def cache_client(cache_url):
-    async with Valkey.from_url(cache_url) as client:
-        await client.flushdb()
-        yield client
-
-
-@pytest.fixture
-def cache_connection(cache_client):
-    @asynccontextmanager
-    async def connection():
-        yield cache_client
-
-    return connection
+    byte_cache.invalidate(lambda _: True)
+    async with connection() as conn:
+        await conn.execute("""
+            TRUNCATE aed, country, country_tile, country_count, photo_report, photo;
+            DELETE FROM state WHERE key <> 'native_schema';
+            UPDATE map_revision SET revision = 0, country_revision = 0, feature_count = 0
+        """)
+    yield

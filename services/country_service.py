@@ -1,129 +1,129 @@
+import json
 import logging
-from asyncio import Event, sleep
-from collections.abc import Sequence
+from asyncio import Event, sleep, to_thread
+from collections.abc import Iterable
+from hashlib import blake2b
 from time import time
 from typing import NoReturn
 
 from sentry_sdk import start_transaction, trace
-from shapely.geometry import Point
-from sqlalchemy import func, select, text
 
 from config import COUNTRY_UPDATE_DELAY
 from country_code_assigner import CountryCodeAssigner
-from db import db_read, db_write
-from models.bbox import BBox
-from models.db.aed import AED
-from models.db.country import Country
+from db import connection, publication
+from models.country import CountrySummary
+from models.osm_country import OSMCountry
 from osm_countries import get_osm_countries
-from services.state_service import StateService
+from services.state_service import StateService, set_state
+from services.tile_service import TileService
 from utils import retry_exponential
 
 
 class CountryService:
     @staticmethod
     async def update_db_task(started: Event) -> NoReturn:
-        if (await _should_update_db())[1] > 0:
+        if await StateService.get('country') is not None:
             started.set()
-
         while True:
-            with start_transaction(op='db.update', name=CountryService.update_db_task.__qualname__, sampled=True):
+            with start_transaction(op='db.update', name=CountryService.update_db_task.__qualname__):
                 await _update_db()
             started.set()
             await sleep(COUNTRY_UPDATE_DELAY.total_seconds())
 
     @staticmethod
     @trace
-    async def get_names() -> Sequence[tuple[str, dict[str, str]]]:
-        async with db_read() as session:
-            stmt = select(Country.code, Country.names)
-            return (await session.execute(stmt)).tuples().all()
-
-    @classmethod
-    @trace
-    async def get_intersecting(cls, bbox_or_geom: BBox | Point) -> Sequence[Country]:
-        geometry = bbox_or_geom.to_polygon() if isinstance(bbox_or_geom, BBox) else bbox_or_geom
-        geometry_wkt = geometry.wkt
-
-        async with db_read() as session:
-            stmt = select(Country).where(func.ST_Intersects(Country.geometry, func.ST_GeomFromText(geometry_wkt, 4326)))
-            return (await session.scalars(stmt)).all()
-
-
-@trace
-async def _should_update_db() -> tuple[bool, float]:
-    data = await StateService.get('country')
-    if data is None or data.get('version', 1) < 2:
-        return True, 0
-
-    update_timestamp: float = data['update_timestamp']
-    update_age = time() - update_timestamp
-    if update_age > COUNTRY_UPDATE_DELAY.total_seconds():
-        return True, update_timestamp
-
-    return False, update_timestamp
+    async def get_names() -> list[CountrySummary]:
+        async with connection() as conn:
+            rows = await conn.fetch("""
+                SELECT code, names::text, coalesce(feature_count, 0) AS feature_count, false AS world
+                FROM country LEFT JOIN country_count USING (code)
+                UNION ALL
+                SELECT 'WORLD', '{"default":"World"}', feature_count, true FROM map_revision
+                ORDER BY world, code
+            """)
+        return [CountrySummary(r['code'], json.loads(r['names']), r['feature_count']) for r in rows]
 
 
 @retry_exponential(None, start=4)
 @trace
 async def _update_db() -> None:
-    update_required, update_timestamp = await _should_update_db()
-    if not update_required:
+    state = await StateService.get('country')
+    if (
+        state is not None
+        and time() - state.get('checked_at', state['update_timestamp']) < COUNTRY_UPDATE_DELAY.total_seconds()
+    ):
         return
-
-    logging.info('Updating country database...')
-    osm_countries = await get_osm_countries()
-    data_timestamp = osm_countries[0].timestamp if osm_countries else float('-inf')
-
-    if data_timestamp <= update_timestamp:
-        logging.info('Nothing to update')
-        return
-
-    if len(osm_countries) < 210:
-        # suspiciously low number of countries
-        logging.warning('Not enough countries found: %d', len(osm_countries))
-        return
-
-    code_assigner = CountryCodeAssigner()
-    countries = tuple(
-        Country(
-            code=code_assigner.get_unique(c.tags),
-            names=_get_names(c.tags),
-            geometry=c.geometry,
-            label_position=c.representative_point,
+    countries = await get_osm_countries()
+    if len(countries) < 210:
+        raise ValueError(f'Incomplete country artifact: {len(countries)} countries')
+    records = await to_thread(_country_records, countries)
+    fingerprint = await to_thread(lambda: blake2b(json.dumps(records).encode(), digest_size=16).hexdigest())
+    new_state = {
+        'version': 3,
+        'update_timestamp': max(c.timestamp for c in countries),
+        'checked_at': time(),
+        'fingerprint': fingerprint,
+    }
+    replacing = False
+    async with publication(lambda: TileService.invalidate_all() if replacing else None) as conn:
+        current = await conn.fetchval("SELECT data::text FROM state WHERE key = 'country'")
+        if (json.loads(current) if current else None) != state:
+            return
+        if state is not None and state.get('fingerprint') == fingerprint:
+            await set_state(conn, 'country', new_state)
+            return
+        await conn.execute(
+            'CREATE TEMP TABLE incoming_country (code varchar(8) PRIMARY KEY, names jsonb, geometry jsonb, label jsonb) '
+            'ON COMMIT DROP'
         )
-        for c in osm_countries
-    )
+        await conn.copy_records_to_table('incoming_country', records=records)
+        invalid = await conn.fetchval("""
+            SELECT code FROM incoming_country
+            WHERE NOT ST_IsValid(ST_GeomFromGeoJSON(geometry)) OR ST_IsEmpty(ST_GeomFromGeoJSON(geometry))
+              OR GeometryType(ST_GeomFromGeoJSON(geometry)) NOT IN ('POLYGON', 'MULTIPOLYGON')
+              OR GeometryType(ST_GeomFromGeoJSON(label)) <> 'POINT'
+            LIMIT 1
+        """)
+        if invalid is not None:
+            raise ValueError(f'Invalid country geometry: {invalid}')
+        replacing = True
+        await conn.execute('DELETE FROM country')
+        await conn.execute("""
+            INSERT INTO country SELECT code, names, ST_GeomFromGeoJSON(geometry), ST_GeomFromGeoJSON(label)
+            FROM incoming_country
+        """)
+        await conn.execute('ANALYZE country')
+        await conn.execute('SELECT assign_country_codes()')
+        await conn.execute('SELECT refresh_map_counts()')
+        await conn.execute('SELECT prepare_country_tiles()')
+        await conn.execute('UPDATE map_revision SET revision = revision + 1, country_revision = country_revision + 1')
+        await set_state(conn, 'country', new_state)
+        await conn.execute('ANALYZE aed; ANALYZE country_tile; ANALYZE country_count')
+    logging.info('Published %d countries and complete AED memberships', len(records))
 
-    async with db_write() as session:
-        await session.execute(text(f'TRUNCATE "{Country.__tablename__}" CASCADE'))
-        session.add_all(countries)
 
-    await StateService.set('country', {'update_timestamp': data_timestamp, 'version': 2})
-
-    logging.info('Updating country codes')
-    from services.aed_service import AEDService
-
-    await AEDService.update_country_codes()
-
-    logging.info('Updating statistics')
-    async with db_write() as session:
-        await session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
-        await session.execute(text(f'ANALYZE "{AED.__tablename__}", "{Country.__tablename__}"'))
-
-    logging.info('Country update finished')
+def _country_records(countries: Iterable[OSMCountry]) -> list[tuple[str, str, str, str]]:
+    assigner = CountryCodeAssigner()
+    records = []
+    for country in countries:
+        code = assigner.get_unique(country.tags)
+        names = _get_names(country.tags)
+        if not 2 <= len(code) <= 8 or code == 'WORLD' or 'default' not in names:
+            raise ValueError(f'Invalid country identity: {code}')
+        records.append((
+            code,
+            json.dumps(names, ensure_ascii=False, sort_keys=True),
+            json.dumps(country.geometry, sort_keys=True),
+            json.dumps(country.representative_point, sort_keys=True),
+        ))
+    return sorted(records)
 
 
 def _get_names(tags: dict[str, str]) -> dict[str, str]:
     names = {}
-
     for key in ('name:en', 'int_name', 'name'):
-        default = tags.get(key)
-        if default:
+        if default := tags.get(key):
             names['default'] = default
             break
-
-    for k, v in tags.items():
-        if k.startswith('name:'):
-            names[k[5:].upper()] = v
-
+    names.update((k[5:].upper(), v) for k, v in tags.items() if k.startswith('name:'))
     return names

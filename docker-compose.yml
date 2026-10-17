@@ -6,12 +6,6 @@ services:
       [
         "--bind",
         "0.0.0.0:8000",
-        "--workers",
-        "${WORKERS:-1}",
-        "--max-requests",
-        "1000",
-        "--max-requests-jitter",
-        "100",
         "--timeout-graceful-shutdown",
         "5",
         "--timeout-keep-alive",
@@ -27,5 +21,5 @@ services:
       - ${LISTEN:-80}:8000
 
     volumes:
-      - ./data/postgres17:/app/data/postgres
+      - ./data/postgres18:/app/data/postgres
       - /mnt/data/${TAG}/photos:/app/data/photos

@@ -1,266 +1,196 @@
+import json
 import logging
-from asyncio import Event, sleep
-from collections.abc import Collection, Iterable, Sequence
-from operator import attrgetter, itemgetter
+from asyncio import Event, sleep, to_thread
+from collections.abc import Iterable
+from pathlib import Path
 from time import time
 from typing import NoReturn
 
-from cachetools import TTLCache
+from asyncpg import Connection
 from sentry_sdk import start_transaction, trace
-from shapely import Point
-from sqlalchemy import Unicode, column, delete, func, select, text, update, values
-from sqlalchemy.dialects.postgresql import array, array_agg, insert
 
-from config import AED_REBUILD_THRESHOLD, AED_UPDATE_DELAY
-from db import db_read, db_write
-from models.db.aed import AED
-from models.db.country import Country
+from config import AED_UPDATE_DELAY, PLANET_REPLICA_URL
+from db import connection, publication
+from models.aed import AED, ConflictingNodeVersionError, NodeChange
+from models.map_change import MapChange
 from overpass import query_overpass
-from planet_diffs import get_planet_diffs
-from services.state_service import StateService
+from planet_diffs import ReplicationBatch, get_planet_diffs, reduce_changes, sequence_before
+from services.state_service import StateService, set_state
+from services.tile_service import TileService
 from utils import retry_exponential
 
-_COUNTRY_COUNTS_CACHE = TTLCache(maxsize=1024, ttl=3600)
 _OVERPASS_QUERY = 'node[emergency=defibrillator];out meta qt;'
+_APPLY = (Path(__file__).parent.parent / 'sql/apply_aeds.sql').read_text()
 
 
 class AEDService:
     @staticmethod
     async def update_db_task(started: Event) -> NoReturn:
-        if (await _should_update_db())[1] > 0:
+        if await StateService.get('aed') is not None:
             started.set()
-
         while True:
             with start_transaction(op='db.update', name=AEDService.update_db_task.__qualname__):
                 await _update_db()
             started.set()
             await sleep(AED_UPDATE_DELAY.total_seconds())
 
-    @classmethod
-    @trace
-    async def update_country_codes(cls) -> None:
-        await _assign_country_codes(await cls.get_all())
-
-    @staticmethod
-    @trace
-    async def count_by_country_codes(country_codes: Iterable[str]) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        missing = []
-        for code in dict.fromkeys(country_codes):
-            count = _COUNTRY_COUNTS_CACHE.get(code)
-            if count is None:
-                missing.append((code,))
-            else:
-                counts[code] = count
-
-        if missing:
-            codes = values(column('code', Unicode(8))).data(missing).alias('codes')
-            count = (
-                select(func.count())
-                .select_from(AED)
-                .where(AED.country_codes.contains(array([codes.c.code])))
-                .scalar_subquery()
-            )
-            async with db_read() as session:
-                rows = (await session.execute(select(codes.c.code, count))).tuples().all()
-            _COUNTRY_COUNTS_CACHE.update(rows)
-            counts.update(rows)
-        return counts
-
     @staticmethod
     @trace
     async def get_by_id(id: int) -> AED | None:
-        async with db_read() as session:
-            return await session.get(AED, id)
+        async with connection() as conn:
+            row = await conn.fetchrow(
+                'SELECT id, version, tags::text, ST_X(position) AS lon, ST_Y(position) AS lat '
+                'FROM aed WHERE id = $1 AND tags IS NOT NULL',
+                id,
+            )
+        return AED(row['id'], row['version'], json.loads(row['tags']), row['lon'], row['lat']) if row else None
 
     @staticmethod
-    @trace
-    async def get_all() -> Sequence[AED]:
-        async with db_read() as session:
-            stmt = select(AED)
-            return (await session.scalars(stmt)).all()
+    async def publish(batch: ReplicationBatch, expected_sequence: int) -> bool:
+        changes: list[MapChange] = []
+        async with publication(lambda: TileService.invalidate(changes)) as conn:
+            data = await conn.fetchval("SELECT data::text FROM state WHERE key = 'aed'")
+            state = json.loads(data) if data else {}
+            current = state.get('sequence')
+            if state.get('feed') != PLANET_REPLICA_URL:
+                raise ValueError('Replication feed identity changed; a new baseline is required')
+            if current is not None and batch.last_sequence <= current:
+                return False
+            if current != expected_sequence or batch.first_sequence != expected_sequence + 1:
+                raise ValueError('Replication batch does not follow the committed cursor')
+            changes = await _apply_changes(conn, batch.changes)
+            await set_state(
+                conn,
+                'aed',
+                {
+                    'version': 4,
+                    'feed': PLANET_REPLICA_URL,
+                    'sequence': batch.last_sequence,
+                    'update_timestamp': batch.timestamp,
+                },
+            )
+            if changes:
+                if any(change.counts_changed for change in changes):
+                    await conn.execute('SELECT refresh_map_counts()')
+                await conn.execute('UPDATE map_revision SET revision = revision + 1')
+        return bool(changes)
 
-    @classmethod
-    @trace
-    async def get_by_country_code(cls, country_code: str) -> Sequence[AED]:
-        async with db_read() as session:
-            stmt = select(AED).where(AED.country_codes.contains([country_code]))
-            return (await session.scalars(stmt)).all()
 
-
-@trace
-async def _assign_country_codes(aeds: Collection[AED]) -> None:
-    if not aeds:
-        return
-
-    ids: set[int] = set(map(attrgetter('id'), aeds))
-
-    async with db_write() as session:
-        stmt = (
-            update(AED)
-            .where(AED.id.in_(text(','.join(str(id) for id in ids))))
-            .values({
-                AED.country_codes: select(array_agg(Country.code))
-                .where(func.ST_Intersects(Country.geometry, AED.position))
-                .scalar_subquery()
-            })
+async def _apply_changes(conn: Connection, changes: Iterable[NodeChange], *, details: bool = True) -> list[MapChange]:
+    records = await to_thread(
+        lambda: [
+            (
+                (c.id, c.version, json.dumps(c.tags, ensure_ascii=False), c.lon, c.lat)
+                if isinstance(c, AED)
+                else (c.id, c.version, None, None, None)
+            )
+            for c in changes
+        ]
+    )
+    if not records:
+        return []
+    await conn.execute(
+        'CREATE TEMP TABLE incoming (id bigint PRIMARY KEY, version bigint, tags jsonb, lon float8, lat float8) '
+        'ON COMMIT DROP'
+    )
+    await conn.copy_records_to_table('incoming', records=records)
+    await conn.execute('ANALYZE incoming')
+    conflict = await conn.fetchval("""
+        SELECT incoming.id FROM incoming JOIN aed USING (id)
+        WHERE incoming.version = aed.version AND (
+            incoming.tags IS DISTINCT FROM aed.tags OR
+            (incoming.tags IS NOT NULL AND (
+                incoming.lon IS DISTINCT FROM ST_X(aed.position) OR
+                incoming.lat IS DISTINCT FROM ST_Y(aed.position)
+            ))
+        ) LIMIT 1
+    """)
+    if conflict is not None:
+        raise ConflictingNodeVersionError(f'Conflicting committed node version: {conflict}')
+    rows = await conn.fetch(_APPLY, details)
+    return [
+        MapChange(
+            tuple(row['before']) if row['before'] is not None else None,
+            tuple(row['after']) if row['after'] is not None else None,
+            row['render_changed'],
+            row['counts_changed'],
         )
-        await session.execute(stmt)
-
-
-@trace
-async def _should_update_db() -> tuple[bool, float]:
-    doc = await StateService.get('aed')
-    if doc is None or doc.get('version', 1) < 3:
-        return True, 0
-
-    update_timestamp: float = doc['update_timestamp']
-    update_age = time() - update_timestamp
-    if update_age > AED_UPDATE_DELAY.total_seconds():
-        return True, update_timestamp
-
-    return False, update_timestamp
+        for row in rows
+    ]
 
 
 @retry_exponential(None, start=4)
 @trace
 async def _update_db() -> None:
-    update_required, update_timestamp = await _should_update_db()
-    if not update_required:
-        return
-
-    update_age = time() - update_timestamp
-
-    if update_age > AED_REBUILD_THRESHOLD.total_seconds():
+    state = await StateService.get('aed')
+    if state is None or state.get('version', 1) < 4:
         await _update_db_snapshot()
-    else:
-        await _update_db_diffs(update_timestamp)
+        return
+    if time() - state['update_timestamp'] < AED_UPDATE_DELAY.total_seconds():
+        return
+    batch = await get_planet_diffs(state['sequence'])
+    if batch.last_sequence >= batch.first_sequence:
+        await AEDService.publish(batch, state['sequence'])
 
 
 @trace
 async def _update_db_snapshot() -> None:
-    logging.info('Updating aed database (overpass)...')
-    elements, data_timestamp = await query_overpass(_OVERPASS_QUERY, timeout=3600, must_return=True)
-    aeds = tuple(_process_overpass_node(e) for e in elements)
-
-    async with db_write() as session:
-        await session.execute(text(f'TRUNCATE "{AED.__tablename__}" CASCADE'))
-        session.add_all(aeds)
-
-    await StateService.set('aed', {'update_timestamp': data_timestamp, 'version': 3})
-
-    if aeds:
-        logging.info('Updating country codes')
-        await _assign_country_codes(aeds)
-
-        logging.info('Updating statistics')
-        async with db_write() as session:
-            await session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
-            await session.execute(text(f'ANALYZE "{AED.__tablename__}"'))
-
-    logging.info('AED update finished (=%d)', len(aeds))
-
-
-@trace
-async def _update_db_diffs(last_update: float) -> None:
-    logging.info('Updating aed database (diff)...')
-    actions, data_timestamp = await get_planet_diffs(last_update)
-
-    if data_timestamp <= last_update:
-        logging.info('Nothing to update')
-        return
-
-    # aeds need to be deduplicated to use ON CONFLICT
-    id_aed_map: dict[int, AED] = {}
-    remove_ids: set[int] = set()
-
-    for action in actions:
-        for result in _process_action(action):
-            if isinstance(result, AED):
-                prev = id_aed_map.get(result.id)
-                if prev is None or prev.version < result.version:
-                    id_aed_map[result.id] = result
-            else:
-                remove_ids.add(result)
-
-    aeds = id_aed_map.values()
-
-    async with db_write() as session:
-        if aeds:
-            stmt = insert(AED).values([
-                {
-                    'id': aed.id,
-                    'version': aed.version,
-                    'tags': aed.tags,
-                    'position': aed.position,
-                    'country_codes': None,
-                }
-                for aed in aeds
-            ])
-            stmt = stmt.on_conflict_do_update(
-                index_elements=(AED.id,),
-                set_={
-                    'version': stmt.excluded.version,
-                    'tags': stmt.excluded.tags,
-                    'position': stmt.excluded.position,
-                    'country_codes': None,
-                },
-            )
-            await session.execute(stmt)
-
-        if remove_ids:
-            stmt = delete(AED).where(AED.id.in_(text(','.join(str(id) for id in remove_ids))))
-            await session.execute(stmt)
-
-    await StateService.set('aed', {'update_timestamp': data_timestamp, 'version': 3})
-
-    if aeds:
-        logging.info('Updating country codes')
-        await _assign_country_codes(aeds)
-
-    logging.info('AED update finished (+%d, -%d)', len(aeds), len(remove_ids))
-
-
-def _process_action(action: dict) -> Iterable[AED | int]:
-    if action['@type'] in ('create', 'modify'):
-        return (_process_action_create_or_modify(node) for node in action['node'])
-    elif action['@type'] == 'delete':
-        return map(itemgetter('@id'), action['node'])
-    else:
-        raise NotImplementedError(f'Unknown action type: {action["@type"]}')
-
-
-def _process_action_create_or_modify(node: dict) -> AED | int:
-    tags = _parse_xml_tags(node)
-    if _is_defibrillator(tags):
-        return AED(
-            id=node['@id'],
-            version=node['@version'],
-            tags=tags,
-            position=Point(node['@lon'], node['@lat']),
-            country_codes=None,
+    expected_state = await StateService.get('aed')
+    logging.info('Building AED baseline from Overpass')
+    elements, timestamp = await query_overpass(_OVERPASS_QUERY, timeout=3600, must_return=True)
+    snapshot = await to_thread(_snapshot_changes, elements)
+    sequence = await sequence_before(timestamp)
+    # Overpass's consistent base timestamp is assumed to describe this configured
+    # minute feed. Replay the complete overlap, including non-AED/deleted events.
+    overlap = []
+    while True:
+        batch = await get_planet_diffs(sequence)
+        overlap.extend(batch.changes)
+        sequence = batch.last_sequence
+        if batch.timestamp > timestamp:
+            timestamp = batch.timestamp
+            break
+        await sleep(1)
+    changes = await to_thread(reduce_changes, (*snapshot, *overlap))
+    replacing = False
+    async with publication(lambda: TileService.invalidate_all() if replacing else None) as conn:
+        current = await conn.fetchval("SELECT data::text FROM state WHERE key = 'aed'")
+        if (json.loads(current) if current else None) != expected_state:
+            logging.info('Discarded AED baseline superseded by committed replication')
+            return
+        replacing = True
+        await conn.execute('DELETE FROM aed')
+        await _apply_changes(conn, changes, details=False)
+        await conn.execute('SELECT refresh_map_counts()')
+        await conn.execute('UPDATE map_revision SET revision = revision + 1')
+        await set_state(
+            conn,
+            'aed',
+            {
+                'version': 4,
+                'feed': PLANET_REPLICA_URL,
+                'sequence': sequence,
+                'update_timestamp': timestamp,
+            },
         )
-    else:
-        return node['@id']
+        await conn.execute('ANALYZE aed')
+    async with connection() as conn:
+        await conn.execute('VACUUM (ANALYZE) aed')
+    logging.info('Published AED baseline at sequence %d', sequence)
 
 
-def _parse_xml_tags(data: dict) -> dict[str, str]:
-    tags = data.get('tag', [])
-    return {tag['@k']: tag['@v'] for tag in tags}
-
-
-def _process_overpass_node(node: dict) -> AED:
-    tags = node.get('tags', {})
-    if not _is_defibrillator(tags):
-        raise AssertionError('Unexpected non-defibrillator node')
-    return AED(
-        id=node['id'],
-        version=node['version'],
-        tags=tags,
-        position=Point(node['lon'], node['lat']),
-        country_codes=None,
-    )
-
-
-def _is_defibrillator(tags: dict[str, str]) -> bool:
-    return tags.get('emergency') == 'defibrillator'
+def _snapshot_changes(elements: Iterable[dict]) -> tuple[NodeChange, ...]:
+    changes = []
+    for node in elements:
+        tags = node.get('tags', {})
+        if not isinstance(tags, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in tags.items()):
+            raise ValueError('Invalid snapshot tags')
+        if node.get('type') != 'node' or tags.get('emergency') != 'defibrillator':
+            raise ValueError('Unexpected snapshot element')
+        id, version, lon, lat = node['id'], node['version'], node['lon'], node['lat']
+        if not 0 < id < 2**63 or version <= 0 or not -180 <= lon <= 180 or not -90 <= lat <= 90:
+            raise ValueError('Invalid snapshot node')
+        changes.append(AED(id, version, tags, lon, lat))
+    if not changes:
+        raise ValueError('Empty AED snapshot')
+    return reduce_changes(changes)

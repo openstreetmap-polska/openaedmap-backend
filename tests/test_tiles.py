@@ -1,37 +1,18 @@
-import asyncio
-from threading import Event
-
 import mapbox_vector_tile as mvt
 import pytest
-from shapely import Point, box
 
-
-async def seed_aeds(engine, values):
-    from sqlalchemy import insert
-
-    from models.db.aed import AED
-
-    async with engine.begin() as conn:
-        await conn.execute(insert(AED), values)
+from tests.data import seed_aeds, seed_countries
 
 
 @pytest.mark.asyncio
-async def test_individual_tiles_preserve_ids_access_and_positions(aed_database):
+async def test_individual_tiles_preserve_ids_access_and_positions(database):
     from services.tile_service import TileService
 
-    await seed_aeds(
-        aed_database,
-        [
-            {
-                'id': 9007199254740993,
-                'version': 3,
-                'tags': {'access': 'customers', 'name': 'unused'},
-                'position': Point(0.001, -0.001),
-            },
-            {'id': 27, 'version': 1, 'tags': {}, 'position': Point(0.002, -0.002)},
-            {'id': 99, 'version': 1, 'tags': {'access': 'yes'}, 'position': Point(30, 30)},
-        ],
-    )
+    await seed_aeds([
+        (9007199254740993, 3, {'access': 'customers', 'name': 'unused'}, 0.001, -0.001, []),
+        (27, 1, {}, 0.002, -0.002, []),
+        (99, 1, {'access': 'yes'}, 30, 30, []),
+    ])
     tile = mvt.decode(await TileService.get_tile(16, 32768, 32768))['defibrillators']
     features = {f['properties']['node_id']: f for f in tile['features']}
     assert set(features) == {9007199254740993, 27}
@@ -42,17 +23,14 @@ async def test_individual_tiles_preserve_ids_access_and_positions(aed_database):
 
 
 @pytest.mark.asyncio
-async def test_clusters_preserve_counts_access_and_singletons(aed_database):
+async def test_clusters_preserve_counts_access_and_singletons(database):
     from services.tile_service import TileService
 
-    await seed_aeds(
-        aed_database,
-        [
-            {'id': 11, 'version': 1, 'tags': {'access': 'no'}, 'position': Point(0.01, -0.01)},
-            {'id': 12, 'version': 1, 'tags': {'access': 'yes'}, 'position': Point(0.02, -0.02)},
-            {'id': 13, 'version': 1, 'tags': {'access': 'customers'}, 'position': Point(1, -1)},
-        ],
-    )
+    await seed_aeds([
+        (11, 1, {'access': 'no'}, 0.01, -0.01, []),
+        (12, 1, {'access': 'yes'}, 0.02, -0.02, []),
+        (13, 1, {'access': 'customers'}, 1, -1, []),
+    ])
     features = mvt.decode(await TileService.get_tile(6, 32, 32))['defibrillators']['features']
     assert len(features) == 2
     group = next(f for f in features if 'point_count' in f['properties'])
@@ -62,101 +40,94 @@ async def test_clusters_preserve_counts_access_and_singletons(aed_database):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(('z', 'x', 'y'), [(6, 0, 0), (16, 0, 0)])
-async def test_empty_tiles(aed_database, z, x, y):
+async def test_nearby_points_form_a_natural_cluster_across_former_grid_boundaries(database):
     from services.tile_service import TileService
 
-    assert mvt.decode(await TileService.get_tile(z, x, y))['defibrillators']['features'] == []
+    await seed_aeds([
+        (21, 1, {'access': 'yes'}, 1.405, -1.4, []),
+        (22, 1, {'access': 'no'}, 1.407, -1.4, []),
+    ])
+    features = mvt.decode(await TileService.get_tile(6, 32, 32))['defibrillators']['features']
+    assert len(features) == 1
+    assert features[0]['properties']['point_count'] == 2
+    assert features[0]['geometry']['coordinates'][0] == 1024
 
 
 @pytest.mark.asyncio
-async def test_country_tiles_keep_names_and_country_counts(aed_database):
-    from sqlalchemy import insert
+async def test_native_encoding_preserves_natural_feature_draw_order(database):
+    from db import connection
+    from services.tile_service import _AEDS
 
-    from models.db.country import Country
+    async with connection() as conn:
+        content = await conn.fetchval(
+            _AEDS,
+            6,
+            32,
+            32,
+            (None, 31, 11),
+            (2, None, None),
+            ('yes', '', 'yes'),
+            (0.02, 1.0, 2.0),
+            (-0.01, -1.0, -2.0),
+        )
+    features = mvt.decode(content)['defibrillators']['features']
+    assert [feature['properties'].get('node_id') for feature in features] == [None, 31, 11]
+
+
+@pytest.mark.asyncio
+async def test_dateline_buffers_preserve_each_source_node_once(database):
     from services.tile_service import TileService
 
-    async with aed_database.begin() as conn:
-        await conn.execute(
-            insert(Country),
-            [
-                {
-                    'code': 'TEST',
-                    'names': {'default': 'Example'},
-                    'geometry': box(1, -3, 3, -1),
-                    'label_position': Point(2, -2),
-                },
-                {
-                    'code': 'OTHER',
-                    'names': {'default': 'Example'},
-                    'geometry': box(4, -3, 6, -1),
-                    'label_position': Point(5, -2),
-                },
-            ],
-        )
-    await seed_aeds(
-        aed_database,
-        [
-            {'id': 71, 'version': 1, 'tags': {}, 'position': Point(2, -2), 'country_codes': ['TEST']},
-            {'id': 72, 'version': 1, 'tags': {}, 'position': Point(5, -2), 'country_codes': ['OTHER']},
-            {'id': 73, 'version': 1, 'tags': {}, 'position': Point(5, -2), 'country_codes': ['OTHER']},
-        ],
-    )
+    await seed_aeds([
+        (31, 1, {}, 179.99, -0.01, []),
+        (32, 1, {}, 179.98, -0.02, []),
+        (33, 1, {}, -179.99, -0.01, []),
+        (34, 1, {}, -179.98, -0.02, []),
+    ])
+    for x in (0, 63):
+        features = mvt.decode(await TileService.get_tile(6, x, 32))['defibrillators']['features']
+        assert len(features) == 1
+        assert sum(f['properties']['point_count'] for f in features) == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('z', 'x', 'y'), [(3, 0, 0), (6, 0, 0), (16, 0, 0)])
+async def test_empty_tiles_keep_named_layers(database, z, x, y):
+    from services.tile_service import TileService
+
+    tile = mvt.decode(await TileService.get_tile(z, x, y))
+    assert tile['defibrillators']['features'] == []
+    if z == 3:
+        assert tile['countries']['features'] == []
+
+
+@pytest.mark.asyncio
+async def test_country_tiles_keep_names_and_country_counts(database):
+    from services.tile_service import TileService
+
+    await seed_countries([
+        ('TEST', {'default': 'Example'}, 'POLYGON((1 -3,3 -3,3 -1,1 -1,1 -3))', 2, -2),
+        ('OTHER', {'default': 'Example'}, 'POLYGON((4 -3,6 -3,6 -1,4 -1,4 -3))', 5, -2),
+    ])
+    await seed_aeds([
+        (71, 1, {}, 2, -2, ['TEST']),
+        (72, 1, {}, 5, -2, ['OTHER']),
+        (73, 1, {}, 5, -2, ['OTHER']),
+    ])
     tile = mvt.decode(await TileService.get_tile(3, 4, 4))
     assert len(tile['countries']['features']) == 2
-    properties = {
-        feature['properties']['country_code']: feature['properties'] for feature in tile['defibrillators']['features']
-    }
-    assert properties == {
-        'TEST': {
-            'country_name': 'Example',
-            'country_code': 'TEST',
-            'point_count': 1,
-            'point_count_abbreviated': '1',
-        },
-        'OTHER': {
-            'country_name': 'Example',
-            'country_code': 'OTHER',
-            'point_count': 2,
-            'point_count_abbreviated': '2',
-        },
-    }
+    properties = {f['properties']['country_code']: f['properties'] for f in tile['defibrillators']['features']}
+    assert properties['TEST']['point_count'] == 1
+    assert properties['OTHER']['point_count'] == 2
+    assert properties['OTHER']['country_name'] == 'Example'
 
 
 @pytest.mark.asyncio
-async def test_cancelled_render_keeps_its_slot_until_thread_finishes(aed_database, monkeypatch):
-    # The encoder is the external native/CPU boundary; holding it models work
-    # that cannot be interrupted when its awaiting request is cancelled.
-    import services.tile_service as tiles
+@pytest.mark.parametrize(
+    ('n', 'expected'), [(999, '999'), (1050, '1.1k'), (1150, '1.1k'), (1250, '1.2k'), (1000000, '1.0m')]
+)
+async def test_native_count_labels_preserve_binary_float_rounding(database, n, expected):
+    from db import connection
 
-    started = Event()
-    release = Event()
-    real_encode = mvt.encode
-    calls = []
-
-    def encode(*args, **kwargs):
-        calls.append(1)
-        started.set()
-        if not release.wait(timeout=10):
-            raise TimeoutError('Test encoder was not released')
-        return real_encode(*args, **kwargs)
-
-    monkeypatch.setattr(mvt, 'encode', encode)
-    first = asyncio.create_task(tiles.TileService.get_tile(16, 0, 0))
-    second = None
-    try:
-        assert await asyncio.to_thread(started.wait, 5)
-        first.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await first
-        second = asyncio.create_task(tiles.TileService.get_tile(16, 0, 0))
-        await asyncio.sleep(0)
-        assert len(calls) == 1
-    finally:
-        release.set()
-        if not first.done():
-            first.cancel()
-        await asyncio.gather(first, return_exceptions=True)
-        if second is not None:
-            await asyncio.wait_for(second, 5)
-    assert len(calls) == 2
+    async with connection() as conn:
+        assert await conn.fetchval('SELECT abbreviate_count($1)', n) == expected

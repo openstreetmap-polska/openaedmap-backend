@@ -1,163 +1,51 @@
 import json
 
 import pytest
-from shapely import Point, box
+
+from tests.asgi_helpers import body, request
+from tests.data import seed_aeds, seed_countries
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ('language', 'expected_names'),
+    ('language', 'names'),
     [
         (None, {'default': 'Japan', 'JA': '日本'}),
         ('JA', {'JA': '日本'}),
         ('missing', {'default': 'Japan', 'JA': '日本'}),
     ],
-    ids=['all-names', 'requested-language', 'missing-language'],
 )
-async def test_country_names_include_counts_and_world_total(aed_database, language, expected_names):
-    from sqlalchemy import insert
-
+async def test_names_language_and_exact_world_count(database, language, names):
     from api.v1.countries import get_names
-    from models.db.aed import AED
-    from models.db.country import Country
 
-    async with aed_database.begin() as conn:
-        await conn.execute(
-            insert(Country),
-            [
-                {
-                    'code': 'NAMES',
-                    'names': {'default': 'Japan', 'JA': '日本'},
-                    'geometry': box(1, 1, 3, 3),
-                    'label_position': Point(2, 2),
-                }
-            ],
-        )
-        await conn.execute(
-            insert(AED),
-            [
-                {
-                    'id': 201,
-                    'version': 1,
-                    'tags': {},
-                    'position': Point(2, 2),
-                    'country_codes': ['NAMES'],
-                }
-            ],
-        )
-    response = await get_names(language)
-    assert json.loads(response.body) == [
-        {
-            'country_code': 'NAMES',
-            'country_names': expected_names,
-            'feature_count': 1,
-            'data_path': '/api/v1/countries/NAMES.geojson',
-        },
-        {
-            'country_code': 'WORLD',
-            'country_names': {'default': 'World'},
-            'feature_count': 1,
-            'data_path': '/api/v1/countries/WORLD.geojson',
-        },
-    ]
+    await seed_countries([
+        ('AA', {'default': 'Japan', 'JA': '日本'}, 'POLYGON((0 0,4 0,4 4,0 4,0 0))', 2, 2),
+        ('BB', {'default': 'Overlap'}, 'POLYGON((0 0,4 0,4 4,0 4,0 0))', 2, 2),
+    ])
+    await seed_aeds([
+        (201, 1, {}, 2, 2, ['AA', 'AA', 'BB']),
+        (202, 1, {}, 50, 50, []),
+    ])
+    result = json.loads((await get_names(language)).body)
+    assert result[0]['country_names'] == names
+    assert [c['feature_count'] for c in result] == [1, 1, 2]
+    assert result[-1]['country_code'] == 'WORLD'
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('country_count', [0, 1, 32], ids=['no-countries', 'one-country', 'many-countries'])
-async def test_country_names_database_work_does_not_fan_out(aed_database, country_count):
-    from sqlalchemy import event, insert
-
-    from api.v1.countries import get_names
-    from models.db.country import Country
-
-    if country_count:
-        async with aed_database.begin() as conn:
-            await conn.execute(
-                insert(Country),
-                [
-                    {
-                        'code': f'C{i:02}',
-                        'names': {'default': f'Country {i}'},
-                        'geometry': box(1, 1, 3, 3),
-                        'label_position': Point(2, 2),
-                    }
-                    for i in range(country_count)
-                ],
-            )
-    statements = []
-    active_connections = 0
-    peak_connections = 0
-
-    def record_statement(conn, cursor, statement, parameters, context, executemany):
-        statements.append(statement)
-
-    def checkout(dbapi_connection, connection_record, connection_proxy):
-        nonlocal active_connections, peak_connections
-        active_connections += 1
-        peak_connections = max(peak_connections, active_connections)
-
-    def checkin(dbapi_connection, connection_record):
-        nonlocal active_connections
-        active_connections -= 1
-
-    listeners = [
-        ('before_cursor_execute', record_statement),
-        ('checkout', checkout),
-        ('checkin', checkin),
-    ]
-    for name, listener in listeners:
-        event.listen(aed_database.sync_engine, name, listener)
-    try:
-        response = await get_names()
-    finally:
-        for name, listener in listeners:
-            event.remove(aed_database.sync_engine, name, listener)
-    countries = json.loads(response.body)
-    assert len(countries) == country_count + 1
-    assert all(country['feature_count'] == 0 for country in countries)
-    assert len(statements) <= 2
-    assert peak_connections == 1
-    assert active_connections == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ('country_code', 'expected_ids'),
-    [('WORLD', {302, 303}), ('AA', {302}), ('EMPTY', set())],
-    ids=['world', 'country', 'empty'],
-)
-async def test_geojson_exports_preserve_membership_coordinates_and_tags(aed_database, country_code, expected_ids):
-    from sqlalchemy import insert
-
+@pytest.mark.parametrize(('country', 'expected'), [('WORLD', {302, 303}), ('AA', {302}), ('EMPTY', set())])
+async def test_geojson_preserves_ids_tags_precision_and_membership(database, country, expected):
     from api.v1.countries import get_geojson
-    from models.db.aed import AED
 
-    async with aed_database.begin() as conn:
-        await conn.execute(
-            insert(AED),
-            [
-                {
-                    'id': 302,
-                    'version': 7,
-                    'tags': {'name': 'Défibrillateur', 'access': 'yes'},
-                    'position': Point(179.25, -45.75),
-                    'country_codes': ['AA'],
-                },
-                {
-                    'id': 303,
-                    'version': 4,
-                    'tags': {'access': 'private'},
-                    'position': Point(-12.5, 60.125),
-                    'country_codes': None,
-                },
-            ],
-        )
-    response = await get_geojson(country_code)
-    collection = json.loads(response.body)
-    assert collection['type'] == 'FeatureCollection'
-    features = {feature['properties']['@osm_id']: feature for feature in collection['features']}
-    assert features.keys() == expected_ids
-    if 302 in expected_ids:
+    await seed_aeds([
+        (302, 7, {'name': 'Défibrillateur', 'access': 'yes'}, 179.25, -45.75, ['AA']),
+        (303, 4, {'access': 'private'}, -12.5, 60.125, []),
+    ])
+    result = json.loads(body(await request(await get_geojson(country))))
+    assert result['type'] == 'FeatureCollection'
+    features = {f['properties']['@osm_id']: f for f in result['features']}
+    assert features.keys() == expected
+    if 302 in expected:
         assert features[302] == {
             'type': 'Feature',
             'geometry': {'type': 'Point', 'coordinates': [179.25, -45.75]},
@@ -169,5 +57,26 @@ async def test_geojson_exports_preserve_membership_coordinates_and_tags(aed_data
                 'access': 'yes',
             },
         }
-    if 303 in expected_ids:
-        assert features[303]['geometry'] == {'type': 'Point', 'coordinates': [-12.5, 60.125]}
+    if 303 in expected:
+        assert features[303]['geometry']['coordinates'] == [-12.5, 60.125]
+
+
+@pytest.mark.asyncio
+async def test_geojson_preserves_int64_unicode_and_raw_tag_precedence(database):
+    from api.v1.countries import get_geojson
+
+    await seed_aeds([
+        (
+            9007199254740993,
+            9,
+            {'@osm_type': 'raw', 'name': '日本\n"\\', 'empty': ''},
+            17.03090941234567,
+            -0.00000001234567,
+            [],
+        ),
+    ])
+    feature = json.loads(body(await request(await get_geojson('WORLD'))))['features'][0]
+    assert feature['properties']['@osm_id'] == 9007199254740993
+    assert feature['properties']['@osm_type'] == 'raw'
+    assert feature['properties']['name'] == '日本\n"\\'
+    assert feature['geometry']['coordinates'] == [17.03090941234567, -0.00000001234567]

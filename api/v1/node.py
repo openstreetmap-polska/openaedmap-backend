@@ -4,7 +4,6 @@ from urllib.parse import quote_plus
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Response
-from shapely import get_coordinates
 from tzfpy import get_tz
 
 from middlewares.cache_control_middleware import cache_control
@@ -94,7 +93,7 @@ async def get_node(node_id: int):
 
     photo_dict = await _get_image_data(aed.tags)
 
-    x, y = get_coordinates(aed.position)[0].tolist()
+    x, y = aed.lon, aed.lat
     timezone_name, timezone_offset = _get_timezone(x, y)
     timezone_dict = {
         '@timezone_name': timezone_name,

@@ -1,28 +1,26 @@
-from sentry_sdk import trace
-from sqlalchemy.dialects.postgresql import insert
+import json
 
-from db import db_read, db_write
-from models.db.state import State
+from asyncpg import Connection
+
+from db import connection
 
 
 class StateService:
     @staticmethod
-    @trace
     async def get(key: str) -> dict | None:
-        async with db_read() as session:
-            instance = await session.get(State, key)
-            return instance.data if (instance is not None) else None
+        async with connection() as conn:
+            data = await conn.fetchval('SELECT data::text FROM state WHERE key = $1', key)
+        return json.loads(data) if data is not None else None
 
     @staticmethod
-    @trace
     async def set(key: str, data: dict) -> None:
-        async with db_write() as session:
-            stmt = (
-                insert(State)
-                .values({State.key: key, State.data: data})
-                .on_conflict_do_update(
-                    index_elements=(State.key,),
-                    set_={State.data: data},
-                )
-            )
-            await session.execute(stmt)
+        async with connection() as conn:
+            await set_state(conn, key, data)
+
+
+async def set_state(conn: Connection, key: str, data: dict) -> None:
+    await conn.execute(
+        'INSERT INTO state VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data',
+        key,
+        json.dumps(data),
+    )

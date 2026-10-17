@@ -1,25 +1,28 @@
 import logging
 from io import BytesIO
+from secrets import token_urlsafe
 
 from fastapi import UploadFile
 from PIL import Image, ImageOps
 from sentry_sdk import add_attachment, trace
 
 from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE
-from db import db_read, db_write
-from models.db.photo import Photo
+from db import connection
+from models.photo import Photo
+from utils import run_blocking
 
 
 class PhotoService:
     @staticmethod
     @trace
     async def get_by_id(id: str, *, check_file: bool = True) -> Photo | None:
-        async with db_read() as session:
-            photo = await session.get(Photo, id)
+        async with connection() as conn:
+            row = await conn.fetchrow('SELECT id, node_id, user_id, created_at FROM photo WHERE id = $1', id)
+        photo = Photo(**row) if row else None
 
         if photo is None:
             return None
-        if check_file and (not photo.file_path.is_file()):
+        if check_file and not await run_blocking(photo.file_path.is_file):
             return None
 
         return photo
@@ -43,13 +46,15 @@ class PhotoService:
         img = _resize_image(img)
         img_bytes = _optimize_quality(img)
 
-        async with db_write() as session:
-            photo = Photo(
-                node_id=node_id,
-                user_id=user_id,
+        async with connection() as conn:
+            row = await conn.fetchrow(
+                'INSERT INTO photo (id, node_id, user_id) VALUES ($1, $2, $3) RETURNING *',
+                token_urlsafe(16),
+                node_id,
+                user_id,
             )
-            session.add(photo)
-
+        photo = Photo(**row)
+        photo.file_path.parent.mkdir(parents=True, exist_ok=True)
         photo.file_path.write_bytes(img_bytes)
         return photo
 

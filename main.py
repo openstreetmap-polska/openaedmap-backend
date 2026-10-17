@@ -9,6 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette_compress import CompressMiddleware
 
+from db import close_database, open_database
 from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import CacheControlMiddleware
 from middlewares.profiler_middleware import ProfilerMiddleware
@@ -16,35 +17,30 @@ from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService
 from services.byte_cache import byte_cache
 from services.country_service import CountryService
-from services.worker_service import WorkerService
+from utils import HTTP
 
 
 @asynccontextmanager
 async def lifespan(_):
+    await open_database()
     try:
-        worker_state = await WorkerService.init()
+        async with TaskGroup() as tg:
+            country_started = Event()
+            country_task = tg.create_task(CountryService.update_db_task(country_started))
+            await country_started.wait()
+            aed_started = Event()
+            aed_task = tg.create_task(AEDService.update_db_task(aed_started))
+            await aed_started.wait()
 
-        if worker_state.is_primary:
-            async with TaskGroup() as tg:
-                country_started = Event()
-                country_task = tg.create_task(CountryService.update_db_task(country_started))
-                await country_started.wait()
-                aed_started = Event()
-                aed_task = tg.create_task(AEDService.update_db_task(aed_started))
-                await aed_started.wait()
-
-                await worker_state.set_state('running')
-                yield
-
-                # on shutdown, always abort the tasks
-                aed_task.cancel()
-                country_task.cancel()
-        else:
-            await worker_state.wait_for_state('running')
             yield
 
+            # on shutdown, always abort the tasks
+            aed_task.cancel()
+            country_task.cancel()
     finally:
         await byte_cache.close()
+        await close_database()
+        await HTTP.aclose()
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=JSONResponseUTF8)

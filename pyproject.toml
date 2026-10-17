@@ -1,29 +1,23 @@
 [project]
 dependencies = [
-  "alembic",
+  "asyncpg",
   "beautifulsoup4[charset-normalizer,lxml]",
-  "cachetools",
   "fastapi",
   "feedgen",
   "h2corn",
   "httpx-secure",
   "httpx[brotli,zstd]",
   "jinja2",
-  "mapbox-vector-tile",
   "numpy",
   "pillow",
   "pyinstrument",
-  "pyproj",
   "python-magic",
   "python-multipart",
   "scikit-learn",
-  "sentry-sdk[fastapi,httpx,sqlalchemy]",
-  "shapely",
-  "sqlalchemy[postgresql-asyncpg]",
+  "sentry-sdk[asyncpg,fastapi,httpx]",
   "starlette-compress",
   "supervisor",
   "tzfpy",
-  "valkey[libvalkey]",
   "xmltodict",
 ]
 name = "openaedmap-backend"
@@ -31,7 +25,7 @@ requires-python = "~=3.14.0"
 version = "0.0.0"
 
 [dependency-groups]
-test = ["pytest", "pytest-asyncio"]
+test = ["mapbox-vector-tile", "pytest", "pytest-asyncio"]
 
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers", "-ra", "--import-mode=importlib"]
@@ -43,6 +37,7 @@ pythonpath = ["."]
 filterwarnings = ["error"]
 
 [tool.uv]
+default-groups = ["test"]
 package = false
 python-downloads = "never"
 python-preference = "only-system"

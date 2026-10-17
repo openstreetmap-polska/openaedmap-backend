@@ -1,64 +1,115 @@
+import gzip
+
 import pytest
-from shapely import Point
+
+from tests.data import seed_aeds, seed_countries
 
 
 @pytest.mark.asyncio
+async def test_replication_uses_latest_terminal_state_and_atomic_memberships(database):
+    from config import PLANET_REPLICA_URL
+    from db import connection
+    from planet_diffs import ReplicationBatch, parse_diff
+    from services.aed_service import AEDService
+    from services.state_service import StateService
+
+    await seed_countries([('AA', {'default': 'First'}, 'POLYGON((0 0,4 0,4 4,0 4,0 0))', 2, 2)])
+    await StateService.set('aed', {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 10, 'update_timestamp': 1})
+    changes = parse_diff(
+        gzip.compress(b"""<osmChange version="0.6">
+      <modify><node id="42" version="1" lon="2" lat="2"/></modify>
+      <modify><node id="42" version="2" lon="2" lat="2">
+        <tag k="emergency" v="defibrillator"/><tag k="name" v="New AED"/>
+      </node></modify></osmChange>""")
+    )
+    assert await AEDService.publish(ReplicationBatch(11, 11, 2, changes), 10)
+    aed = await AEDService.get_by_id(42)
+    assert aed is not None
+    assert aed.version == 2
+    assert aed.tags['name'] == 'New AED'
+    async with connection() as conn:
+        assert await conn.fetchval('SELECT country_codes FROM aed WHERE id=42') == ['AA']
+        assert await conn.fetchval("SELECT feature_count FROM country_count WHERE code='AA'") == 1
+        assert await conn.fetchval('SELECT feature_count FROM map_revision') == 1
+    state = await StateService.get('aed')
+    assert state is not None
+    assert state['sequence'] == 11
+
+
+@pytest.mark.asyncio
+async def test_replication_deletion_retains_version_and_replay_is_idempotent(database):
+    from config import PLANET_REPLICA_URL
+    from db import connection
+    from models.aed import AED, RemovedNode
+    from planet_diffs import ReplicationBatch
+    from services.aed_service import AEDService
+    from services.state_service import StateService
+
+    await seed_aeds([(81, 5, {'emergency': 'defibrillator'}, 2, 3, [])])
+    await StateService.set('aed', {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 20, 'update_timestamp': 1})
+    deleted = ReplicationBatch(21, 21, 2, (RemovedNode(81, 6),))
+    assert await AEDService.publish(deleted, 20)
+    assert await AEDService.get_by_id(81) is None
+    assert not await AEDService.publish(deleted, 20)
+    await AEDService.publish(ReplicationBatch(22, 22, 3, (AED(81, 5, {'emergency': 'defibrillator'}, 2, 3),)), 21)
+    assert await AEDService.get_by_id(81) is None
+    async with connection() as conn:
+        assert await conn.fetchval('SELECT version FROM aed WHERE id=81') == 6
+        assert await conn.fetchval('SELECT feature_count FROM map_revision') == 0
+
+
+@pytest.mark.asyncio
+async def test_conflicting_version_rolls_back_cursor_payload_and_counts(database):
+    from config import PLANET_REPLICA_URL
+    from db import connection
+    from models.aed import AED, ConflictingNodeVersionError
+    from planet_diffs import ReplicationBatch
+    from services.aed_service import AEDService
+    from services.state_service import StateService
+
+    await seed_aeds([(91, 7, {'name': 'Original'}, 3, 4, [])])
+    state = {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 30, 'update_timestamp': 1}
+    await StateService.set('aed', state)
+    with pytest.raises(ConflictingNodeVersionError):
+        await AEDService.publish(ReplicationBatch(31, 31, 2, (AED(91, 7, {'name': 'Different'}, 3, 4),)), 30)
+    aed = await AEDService.get_by_id(91)
+    assert aed is not None
+    assert aed.tags == {'name': 'Original'}
+    assert await StateService.get('aed') == state
+    async with connection() as conn:
+        assert await conn.fetchval('SELECT feature_count FROM map_revision') == 1
+
+
 @pytest.mark.parametrize(
-    ('codes', 'expected'),
+    'xml',
     [
-        ((), {}),
-        (('AA', 'BB', 'EMPTY', 'AA'), {'AA': 2, 'BB': 1, 'EMPTY': 0}),
+        b'<osmChange><modify><node id="1" version="1"/></modify>',
+        b'<osm><node id="1" version="1"/></osm>',
+        b'<!DOCTYPE osmChange [<!ENTITY sample "x">]><osmChange/>',
     ],
-    ids=['no-countries', 'overlapping-duplicate-and-missing-memberships'],
 )
-async def test_country_counts_preserve_array_membership(aed_database, codes, expected):
-    from sqlalchemy import insert
+def test_incomplete_or_wrong_source_document_is_rejected(xml):
+    from xml.parsers.expat import ExpatError
 
-    from models.db.aed import AED
-    from services.aed_service import AEDService
+    from planet_diffs import parse_diff
 
-    async with aed_database.begin() as conn:
-        await conn.execute(
-            insert(AED),
-            [
-                {'id': id, 'version': 1, 'tags': {}, 'position': Point(1, 2), 'country_codes': memberships}
-                for id, memberships in [
-                    (401, ['AA', 'AA', 'BB']),
-                    (402, ['AA']),
-                    (403, None),
-                    (404, []),
-                    (405, ['OTHER']),
-                ]
-            ],
-        )
-    assert await AEDService.count_by_country_codes(iter(codes)) == expected
+    with pytest.raises((ValueError, ExpatError)):
+        parse_diff(gzip.compress(xml))
 
 
 @pytest.mark.asyncio
-async def test_country_counts_reuse_cached_positive_and_zero_counts(aed_database):
-    from sqlalchemy import event, insert
-
-    from models.db.aed import AED
+async def test_irrelevant_replication_advances_cursor_without_changing_content_revision(database):
+    from config import PLANET_REPLICA_URL
+    from db import connection
+    from models.aed import RemovedNode
+    from planet_diffs import ReplicationBatch
     from services.aed_service import AEDService
+    from services.state_service import StateService
 
-    async with aed_database.begin() as conn:
-        await conn.execute(
-            insert(AED),
-            [{'id': 501, 'version': 1, 'tags': {}, 'position': Point(3, 4), 'country_codes': ['CACHED']}],
-        )
-    assert await AEDService.count_by_country_codes(['CACHED', 'EMPTY']) == {'CACHED': 1, 'EMPTY': 0}
-    statements = []
-
-    def record_statement(conn, cursor, statement, parameters, context, executemany):
-        statements.append(statement)
-
-    event.listen(aed_database.sync_engine, 'before_cursor_execute', record_statement)
-    try:
-        cached = await AEDService.count_by_country_codes(['CACHED', 'EMPTY'])
-        assert cached == {'CACHED': 1, 'EMPTY': 0}
-        assert statements == []
-        counts = await AEDService.count_by_country_codes(['CACHED', 'EMPTY', 'NEW'])
-    finally:
-        event.remove(aed_database.sync_engine, 'before_cursor_execute', record_statement)
-    assert counts == {'CACHED': 1, 'EMPTY': 0, 'NEW': 0}
-    assert len(statements) == 1
+    await StateService.set('aed', {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 40, 'update_timestamp': 1})
+    assert not await AEDService.publish(ReplicationBatch(41, 41, 2, (RemovedNode(999, 2),)), 40)
+    state = await StateService.get('aed')
+    assert state is not None
+    assert state['sequence'] == 41
+    async with connection() as conn:
+        assert await conn.fetchval('SELECT revision FROM map_revision') == 0
