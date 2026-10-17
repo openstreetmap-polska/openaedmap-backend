@@ -19,7 +19,7 @@ async def test_committed_moves_access_edits_and_removal_refresh_buffered_high_zo
     from services.state_service import StateService
 
     await seed_aeds([(8701, 1, {'access': 'yes'}, -0.001, -0.001, [])])
-    await StateService.set('aed', {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 50, 'update_timestamp': 1})
+    await StateService.set('aed', {'feed': PLANET_REPLICA_URL, 'sequence': 50, 'update_timestamp': 1})
     app = FastAPI()
     app.include_router(router, prefix='/api/v1')
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
@@ -68,7 +68,7 @@ async def test_non_render_edits_preserve_tile_payload_and_validator(database):
     from services.state_service import StateService
 
     await seed_aeds([(8702, 1, {'name': 'First'}, 0.001, -0.001, [])])
-    await StateService.set('aed', {'version': 4, 'feed': PLANET_REPLICA_URL, 'sequence': 60, 'update_timestamp': 1})
+    await StateService.set('aed', {'feed': PLANET_REPLICA_URL, 'sequence': 60, 'update_timestamp': 1})
     app = FastAPI()
     app.include_router(router, prefix='/api/v1')
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:

@@ -63,7 +63,6 @@ class AEDService:
                 conn,
                 'aed',
                 {
-                    'version': 4,
                     'feed': PLANET_REPLICA_URL,
                     'sequence': batch.last_sequence,
                     'update_timestamp': batch.timestamp,
@@ -123,7 +122,7 @@ async def _apply_changes(conn: Connection, changes: Iterable[NodeChange], *, det
 @trace
 async def _update_db() -> None:
     state = await StateService.get('aed')
-    if state is None or state.get('version', 1) < 4:
+    if state is None:
         await _update_db_snapshot()
         return
     if time() - state['update_timestamp'] < AED_UPDATE_DELAY.total_seconds():
@@ -167,7 +166,6 @@ async def _update_db_snapshot() -> None:
             conn,
             'aed',
             {
-                'version': 4,
                 'feed': PLANET_REPLICA_URL,
                 'sequence': sequence,
                 'update_timestamp': timestamp,

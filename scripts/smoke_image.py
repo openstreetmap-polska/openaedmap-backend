@@ -27,11 +27,10 @@ async def main() -> None:
                     ST_SetSRID(ST_MakePoint(0.002,-0.002),4326), '{}');
                 SELECT refresh_map_counts()
             """)
-        await StateService.set('country', {'version': 3, 'update_timestamp': time.time()})
+        await StateService.set('country', {'checked_at': time.time(), 'update_timestamp': time.time()})
         await StateService.set(
             'aed',
             {
-                'version': 4,
                 'feed': PLANET_REPLICA_URL,
                 'sequence': 1,
                 'update_timestamp': time.time(),

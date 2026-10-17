@@ -48,10 +48,7 @@ class CountryService:
 @trace
 async def _update_db() -> None:
     state = await StateService.get('country')
-    if (
-        state is not None
-        and time() - state.get('checked_at', state['update_timestamp']) < COUNTRY_UPDATE_DELAY.total_seconds()
-    ):
+    if state is not None and time() - state['checked_at'] < COUNTRY_UPDATE_DELAY.total_seconds():
         return
     countries = await get_osm_countries()
     if len(countries) < 210:
@@ -59,7 +56,6 @@ async def _update_db() -> None:
     records = await to_thread(_country_records, countries)
     fingerprint = await to_thread(lambda: blake2b(json.dumps(records).encode(), digest_size=16).hexdigest())
     new_state = {
-        'version': 3,
         'update_timestamp': max(c.timestamp for c in countries),
         'checked_at': time(),
         'fingerprint': fingerprint,

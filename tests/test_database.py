@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from asyncpg import CheckViolationError
 
 
 @pytest.mark.asyncio
@@ -18,7 +19,7 @@ async def test_schema_reinitialization_preserves_valuable_data_and_cursor(databa
     async with connection() as conn:
         await conn.execute('INSERT INTO photo VALUES ($1,$2,$3,$4)', 'preserved', 123, 456, created)
         await conn.execute('INSERT INTO photo_report VALUES ($1,$2,$3)', 'report-id', 'preserved', created)
-    cursor = {'version': 4, 'sequence': 7123456, 'update_timestamp': 1790000000}
+    cursor = {'sequence': 7123456, 'update_timestamp': 1790000000}
     await StateService.set('aed', cursor)
     schema = await to_thread(Path('schema.sql').read_text)
     async with connection() as conn:
@@ -33,3 +34,23 @@ async def test_schema_reinitialization_preserves_valuable_data_and_cursor(databa
         assert await conn.fetchval("SELECT photo_id FROM photo_report WHERE id='report-id'") == 'preserved'
     assert path.read_bytes() == b'original uploaded bytes'
     assert await StateService.get('aed') == cursor
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('tags', 'position'),
+    [
+        pytest.param('{}', None, id='live-aed-without-position'),
+        pytest.param(None, 'SRID=4326;POINT(2 3)', id='tombstone-with-position'),
+    ],
+)
+async def test_schema_rejects_inconsistent_live_state(database, tags, position):
+    from db import connection
+
+    async with connection() as conn:
+        with pytest.raises(CheckViolationError):
+            await conn.execute(
+                'INSERT INTO aed (id, version, tags, position) VALUES (321, 8, $1::jsonb, $2::geometry)',
+                tags,
+                position,
+            )

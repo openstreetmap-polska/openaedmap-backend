@@ -53,8 +53,7 @@ async def database(postgres_pool):
     byte_cache.invalidate(lambda _: True)
     async with connection() as conn:
         await conn.execute("""
-            TRUNCATE aed, country, country_tile, country_count, photo_report, photo;
-            DELETE FROM state WHERE key <> 'native_schema';
+            TRUNCATE aed, country, country_tile, country_count, photo_report, photo, state;
             UPDATE map_revision SET revision = 0, country_revision = 0, feature_count = 0
         """)
     yield

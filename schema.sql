@@ -6,11 +6,9 @@ CREATE TABLE IF NOT EXISTS aed (
     version bigint NOT NULL,
     tags jsonb,
     position geometry(Point, 4326),
-    country_codes varchar(8)[]
+    country_codes varchar(8)[],
+    CONSTRAINT aed_live_state CHECK ((tags IS NULL) = (position IS NULL))
 );
--- Retain versions of former AEDs so delayed/replayed events cannot resurrect them.
-ALTER TABLE aed ALTER COLUMN tags DROP NOT NULL;
-ALTER TABLE aed ALTER COLUMN position DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS aed_position_idx ON aed USING gist (position);
 CREATE INDEX IF NOT EXISTS aed_country_codes_idx ON aed USING gin (country_codes);
 
@@ -132,20 +130,5 @@ BEGIN
     IF remainder * 2 > denominator OR (remainder * 2 = denominator AND mod(tenths, 2) = 1)
     THEN tenths := tenths + 1; END IF;
     RETURN div(tenths, 10)::text || '.' || mod(tenths, 10)::text || suffix;
-END;
-$$;
-
--- Initialize derived state when opening an existing pre-schema.sql database.
-DO $$
-BEGIN
-    IF EXISTS (SELECT FROM aed WHERE tags IS NOT NULL AND country_codes IS NULL) THEN
-        PERFORM assign_country_codes();
-    END IF;
-    IF NOT EXISTS (SELECT FROM state WHERE key = 'native_schema') THEN
-        ALTER TABLE aed ADD CONSTRAINT aed_live_state CHECK ((tags IS NULL) = (position IS NULL));
-        PERFORM refresh_map_counts();
-        PERFORM prepare_country_tiles();
-        INSERT INTO state VALUES ('native_schema', '{"version": 1}');
-    END IF;
 END;
 $$;
