@@ -1,7 +1,6 @@
 import asyncio
 
 import pytest
-from fastapi import HTTPException
 
 from models.payload import ImageKey, Payload, TileKey
 from services.byte_cache import ByteCache
@@ -81,12 +80,65 @@ async def test_cancelled_work_keeps_capacity_until_cleanup_finishes():
     with pytest.raises(asyncio.CancelledError):
         await pending
     await cleaning.wait()
+    replacement_started = asyncio.Event()
+
+    async def replacement():
+        replacement_started.set()
+        return Payload.create(b'replacement', 'text/plain')
+
+    queued = asyncio.create_task(cache.get(TileKey(10, 2, 2), replacement, ttl=60))
     try:
-        with pytest.raises(HTTPException) as error:
-            await cache.get(TileKey(10, 2, 2), build, ttl=60)
-        assert error.value.status_code == 503
+        await asyncio.sleep(0)
+        assert not replacement_started.is_set()
+        assert not queued.done()
+        release.set()
+        assert (await queued).content == b'replacement'
     finally:
         release.set()
+        queued.cancel()
+        await asyncio.gather(queued, return_exceptions=True)
+        await cache.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('max_bytes', [0, 4096], ids=['no-retention', 'retained'])
+async def test_cold_readers_wait_for_capacity_then_share_one_fill(max_bytes):
+    cache = ByteCache(max_bytes=max_bytes, max_jobs=1)
+    first_started, first_release = asyncio.Event(), asyncio.Event()
+    next_started, next_release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def first_build():
+        first_started.set()
+        await first_release.wait()
+        return Payload.create(b'first', 'text/plain')
+
+    async def next_build():
+        nonlocal calls
+        calls += 1
+        next_started.set()
+        await next_release.wait()
+        return Payload.create(b'next', 'text/plain')
+
+    try:
+        async with asyncio.TaskGroup() as tasks:
+            first = tasks.create_task(cache.get(TileKey(10, 1, 1), first_build, ttl=60))
+            await first_started.wait()
+            readers = [tasks.create_task(cache.get(TileKey(10, 2, 1), next_build, ttl=60)) for _ in range(3)]
+            cancelled = tasks.create_task(cache.get(TileKey(10, 3, 1), next_build, ttl=60))
+            await asyncio.sleep(0)
+            assert all(not task.done() for task in readers)
+            assert not next_started.is_set()
+            cancelled.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await cancelled
+            first_release.set()
+            await next_started.wait()
+            next_release.set()
+        assert first.result().content == b'first'
+        assert all(task.result().content == b'next' for task in readers)
+        assert calls == 1
+    finally:
         await cache.close()
 
 

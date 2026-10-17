@@ -1,5 +1,5 @@
 import logging
-from asyncio import Task, create_task, gather, shield
+from asyncio import Event, Task, create_task, gather, shield
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -45,26 +45,31 @@ class ByteCache:
         self.entries: OrderedDict[CacheKey, _Entry] = OrderedDict()
         self.jobs: dict[CacheKey, _Job] = {}
         self.active: set[Task[Payload]] = set()
+        self.capacity_changed = Event()
 
     async def get(
         self, key: CacheKey, build: Callable[[], Awaitable[Payload]], *, ttl: float, stale: float = 0
     ) -> Payload:
-        entry = self.entries.get(key)
-        if entry is not None:
-            now = self.clock()
-            if now < entry.fresh_until:
-                self.entries.move_to_end(key)
-                return entry.payload
-            if now >= entry.stale_until:
-                del self.entries[key]
-                self.bytes -= entry.size
-                entry = None
-        job = self.jobs.get(key)
-        if job is None:
+        while True:
+            entry = self.entries.get(key)
+            if entry is not None:
+                now = self.clock()
+                if now < entry.fresh_until:
+                    self.entries.move_to_end(key)
+                    return entry.payload
+                if now >= entry.stale_until:
+                    del self.entries[key]
+                    self.bytes -= entry.size
+                    entry = None
+            job = self.jobs.get(key)
+            if job is not None:
+                break
             if len(self.active) >= self.max_jobs:
                 if entry is not None:
                     return entry.payload
-                raise HTTPException(503, 'Origin capacity is busy', headers={'Retry-After': '1'})
+                self.capacity_changed.clear()
+                await self.capacity_changed.wait()
+                continue
 
             async def produce() -> Payload:
                 return await build()
@@ -73,8 +78,9 @@ class ByteCache:
             job = self.jobs[key] = _Job(task, background=entry is not None)
             self.active.add(task)
 
-            def completed(task: Task[Payload]) -> None:
+            def completed(task: Task[Payload], job: _Job = job) -> None:
                 self.active.remove(task)
+                self.capacity_changed.set()
                 current = self.jobs.get(key) is job
                 if current:
                     del self.jobs[key]
@@ -87,6 +93,7 @@ class ByteCache:
                     logging.error('Failed to refresh a public payload', exc_info=error)
 
             task.add_done_callback(completed)
+            break
         if entry is not None:
             self.entries.move_to_end(key)
             return entry.payload
