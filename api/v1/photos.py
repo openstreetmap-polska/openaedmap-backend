@@ -153,8 +153,8 @@ async def upload(
     if file.size is None or file.size <= 0:
         return Response('File must not be empty', 400)
 
-    content_type = magic.from_buffer(file.file.read(2048), mime=True)
-    file.file.seek(0)
+    content_type = magic.from_buffer(await file.read(2048), mime=True)
+    await file.seek(0)
     if content_type not in IMAGE_CONTENT_TYPES:
         return Response(f'Unsupported file type {content_type!r}, must be one of {IMAGE_CONTENT_TYPES}', 400)
 
@@ -162,7 +162,9 @@ async def upload(
         oauth2_credentials_dict: dict = json.loads(oauth2_credentials)
     except json.JSONDecodeError:
         return Response('OAuth2 credentials must be a JSON object', 400)
-    if 'access_token' not in oauth2_credentials_dict:
+    if not isinstance(oauth2_credentials_dict, dict):
+        return Response('OAuth2 credentials must be a JSON object', 400)
+    if not isinstance(oauth2_credentials_dict.get('access_token'), str) or not oauth2_credentials_dict['access_token']:
         return Response('OAuth2 credentials must contain an access_token field', 400)
     oauth2_token = SecretStr(oauth2_credentials_dict['access_token'])
     del oauth2_credentials_dict

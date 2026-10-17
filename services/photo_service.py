@@ -1,15 +1,21 @@
 import logging
+import os
+from asyncio import Semaphore
 from io import BytesIO
+from pathlib import Path
 from secrets import token_urlsafe
+from tempfile import NamedTemporaryFile
 
 from fastapi import UploadFile
 from PIL import Image, ImageOps
 from sentry_sdk import add_attachment, trace
 
-from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE
+from config import IMAGE_LIMIT_PIXELS, IMAGE_MAX_FILE_SIZE, PHOTOS_DIR
 from db import connection
 from models.photo import Photo
 from utils import run_blocking
+
+_image_slot = Semaphore(1)
 
 
 class PhotoService:
@@ -30,33 +36,46 @@ class PhotoService:
     @staticmethod
     @trace
     async def upload(node_id: int, user_id: int, file: UploadFile) -> Photo:
-        img = Image.open(file.file)
+        id = token_urlsafe(16)
+        async with _image_slot:
+            await run_blocking(_publish_file, node_id, user_id, id, file)
+            # The durable file precedes its row. An uncertain DB commit may leave
+            # a recoverable file, but must never leave a row pointing to lost bytes.
+            async with connection() as conn:
+                row = await conn.fetchrow(
+                    'INSERT INTO photo (id, node_id, user_id) VALUES ($1, $2, $3) RETURNING *',
+                    id,
+                    node_id,
+                    user_id,
+                )
+        return Photo(**row)
 
+
+def _publish_file(node_id: int, user_id: int, id: str, file: UploadFile) -> None:
+    with Image.open(file.file) as img:
         try:
             ImageOps.exif_transpose(img, in_place=True)
         except Exception:
             file.file.seek(0)
-            add_attachment(
-                file.file.read(),
-                filename=file.filename,
-                content_type=file.content_type,
-            )
+            add_attachment(file.file.read(), filename=file.filename, content_type=file.content_type)
             raise
-
-        img = _resize_image(img)
-        img_bytes = _optimize_quality(img)
-
-        async with connection() as conn:
-            row = await conn.fetchrow(
-                'INSERT INTO photo (id, node_id, user_id) VALUES ($1, $2, $3) RETURNING *',
-                token_urlsafe(16),
-                node_id,
-                user_id,
-            )
-        photo = Photo(**row)
-        photo.file_path.parent.mkdir(parents=True, exist_ok=True)
-        photo.file_path.write_bytes(img_bytes)
-        return photo
+        content = _optimize_quality(_resize_image(img))
+    PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    destination = PHOTOS_DIR / f'{user_id}_{node_id}_{id}.webp'
+    with NamedTemporaryFile(dir=PHOTOS_DIR, suffix='.tmp', delete=False) as pending:
+        path = Path(pending.name)
+        try:
+            pending.write(content)
+            pending.flush()
+            os.fsync(pending.fileno())
+            path.replace(destination)
+            directory = os.open(PHOTOS_DIR, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 @trace
