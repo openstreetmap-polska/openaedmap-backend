@@ -6,8 +6,9 @@ from pathlib import Path
 import sentry_sdk
 from pyproj import Transformer
 
+from version import VERSION
+
 NAME = 'openaedmap-backend'
-VERSION = '2.15.0'
 CREATED_BY = f'{NAME} {VERSION}'
 WEBSITE = 'https://openaedmap.org'
 
@@ -118,6 +119,7 @@ def _traces_sampler(sampling_context: dict) -> float:
 if SENTRY_DSN := os.getenv('SENTRY_DSN'):
     sentry_sdk.init(
         dsn=SENTRY_DSN,
+        release=VERSION,
         environment=ENVIRONMENT,
         keep_alive=True,
         traces_sampler=_traces_sampler,

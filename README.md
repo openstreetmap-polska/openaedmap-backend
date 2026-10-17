@@ -43,6 +43,9 @@ h2corn main:app
 
 Navigate to http://localhost:8000 to access the web app locally.
 
+`X-Version`, the user agent, and OSM edit metadata identify the Git revision automatically.
+Local edits add a `-dirty` suffix; built images embed their source revision.
+
 ### Tests
 
 Inside the development shell, run `uv run --group test pytest`.

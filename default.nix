@@ -4,6 +4,16 @@
 
 let
   envTag = builtins.getEnv "TAG";
+  environmentRelease = builtins.getEnv "SENTRY_RELEASE";
+  gitSource = builtins.fetchGit ./.;
+  release =
+    if environmentRelease != "" then
+      environmentRelease
+    else if gitSource ? dirtyRev then
+      gitSource.dirtyRev
+    else
+      gitSource.rev;
+
 
   shell = import ./shell.nix { isDevelopment = false; };
 
@@ -73,12 +83,13 @@ dockerTools.streamLayeredImage {
 
   config = {
     WorkingDir = "/app";
+    Labels."org.opencontainers.image.revision" = release;
     Env = [
       "TZ=UTC"
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
-      "SENTRY_RELEASE=${builtins.getEnv "SENTRY_RELEASE"}"
+      "SENTRY_RELEASE=${release}"
     ];
     Volumes = {
       "/app/data/postgres" = { };

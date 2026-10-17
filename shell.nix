@@ -134,11 +134,6 @@ let
 
       # -- Misc
     ]
-    ++ [
-      (writeShellScriptBin "make-version" ''
-        sed -i -r "s|VERSION = '([0-9.]+)'|VERSION = '\1.$(date +%y%m%d)'|g" config.py
-      '')
-    ]
     ++ lib.optionals isDevelopment [
       (writeShellScriptBin "nixpkgs-update" ''
         set -e
@@ -152,7 +147,7 @@ let
       '')
       (writeShellScriptBin "docker-build" ''
         set -e
-        export SENTRY_RELEASE="$(git rev-parse HEAD)"
+        export SENTRY_RELEASE="$(SENTRY_RELEASE= python -c 'from version import VERSION; print(VERSION)')"
         if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
         "$(nix-build --no-out-link)" | docker load
       '')
@@ -186,9 +181,6 @@ let
       else
         echo "Skipped loading .env file (not found)"
       fi
-    ''
-    + lib.optionalString (!isDevelopment) ''
-      make-version
     '';
 in
 pkgs.mkShell {
