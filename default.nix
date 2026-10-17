@@ -14,6 +14,27 @@ let
     else
       gitSource.rev;
 
+  rootPython = builtins.map (name: ./. + "/${name}") (
+    builtins.filter (name: pkgs.lib.hasSuffix ".py" name) (builtins.attrNames (builtins.readDir ./.))
+  );
+  appSource = pkgs.lib.fileset.toSource {
+    root = ./.;
+    fileset = pkgs.lib.fileset.unions (
+      rootPython
+      ++ [
+        ./schema.sql
+        ./sql
+        ./config
+        ./envs/app
+      ]
+      ++ builtins.map (directory: pkgs.lib.fileset.fileFilter (file: file.hasExt "py") directory) [
+        ./api
+        ./middlewares
+        ./models
+        ./services
+      ]
+    );
+  };
 
   shell = import ./shell.nix { isDevelopment = false; };
 
@@ -23,9 +44,9 @@ let
       (pkgs.runCommand "python-venv" { } ''
         set -e
         mkdir -p $out/bin $out/lib
-        find "${./.venv/bin}" -type f -executable -exec cp {} $out/bin \;
+        find "${./.venv-runtime/bin}" -type f -executable -exec cp {} $out/bin \;
         sed -i '1s|^#!.*/python|#!/usr/bin/env python|' $out/bin/*
-        cp -r "${./.venv/lib/python3.14/site-packages}"/* $out/lib
+        cp -r "${./.venv-runtime/lib/python3.14/site-packages}"/* $out/lib
       '')
     ];
     pathsToLink = [
@@ -39,7 +60,7 @@ let
     rm -f data/postgres/postmaster.pid
     dev-start
     set -o allexport
-    source "envs/app/${envTag}.env" set
+    ${pkgs.lib.optionalString (envTag != "") ''source "envs/app/${envTag}.env" set''}
     set +o allexport
     exec h2corn main:app "$@"
   '';
@@ -60,15 +81,15 @@ dockerTools.streamLayeredImage {
     mkdir tmp
     mkdir app && cd app
     mkdir -p data/postgres data/photos
-    cp "${./.}"/*.py .
-    cp "${./.}"/schema.sql .
-    cp -r "${./.}"/sql .
-    cp -r "${./.}"/api .
-    cp -r "${./.}"/config .
-    cp -r "${./.}"/envs .
-    cp -r "${./.}"/middlewares .
-    cp -r "${./.}"/models .
-    cp -r "${./.}"/services .
+    cp "${appSource}"/*.py .
+    cp "${appSource}"/schema.sql .
+    cp -r "${appSource}"/sql .
+    cp -r "${appSource}"/api .
+    cp -r "${appSource}"/config .
+    cp -r "${appSource}"/envs .
+    cp -r "${appSource}"/middlewares .
+    cp -r "${appSource}"/models .
+    cp -r "${appSource}"/services .
   '';
 
   fakeRootCommands = ''

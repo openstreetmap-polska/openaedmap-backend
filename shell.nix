@@ -138,6 +138,7 @@ let
       (writeShellScriptBin "docker-build" ''
         set -e
         export SENTRY_RELEASE="$(SENTRY_RELEASE= python -c 'from version import VERSION; print(VERSION)')"
+        UV_PROJECT_ENVIRONMENT=.venv-runtime uv sync --locked --no-default-groups
         if command -v podman &> /dev/null; then docker() { podman "$@"; } fi
         "$(nix-build --no-out-link)" | docker load
       '')
