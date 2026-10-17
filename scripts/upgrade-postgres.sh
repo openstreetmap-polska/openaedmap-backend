@@ -27,10 +27,16 @@ case "$state" in
   *) echo "error: expected data/postgres17 and an absent data/postgres18" >&2; exit 1 ;;
 esac
 
-staging=$(mktemp -d "$PWD/data/.postgres18-upgrade-XXXXXXXX")
+staging=$(docker run --rm --user 0 --entrypoint sh -v "$PWD/data:/data" "$new_image" \
+  -c 'mktemp -d /data/.postgres18-upgrade-XXXXXXXX')
+staging=$PWD/data/${staging##*/}
 container=openaedmap-upgrade-${staging##*-}
 trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
-cat > "$staging/manifest.sql" <<'SQL'
+docker run --rm -i --user 0 --entrypoint sh -v "$staging:/upgrade" "$new_image" -ceu '
+  cat > /upgrade/manifest.sql
+  chown -R 999:999 /upgrade
+  chmod 700 /upgrade
+' <<'SQL'
 SELECT 'aed', count(*), md5(coalesce(string_agg(md5(
   jsonb_build_array(id,version,tags,encode(ST_AsEWKB(position),'hex'),country_codes)::text
 ),'' ORDER BY id),'')) FROM aed;
@@ -45,8 +51,6 @@ SELECT 'roles', count(*), md5(coalesce(string_agg(md5(
     rolreplication,rolconnlimit,rolpassword,rolvaliduntil,rolbypassrls)::text
 ),'' ORDER BY rolname COLLATE "C"),'')) FROM pg_authid WHERE left(rolname,3) <> 'pg_';
 SQL
-docker run --rm --user 0 --entrypoint sh \
-  -v "$staging:/upgrade" "$new_image" -c 'chown -R 999:999 /upgrade; chmod 700 /upgrade'
 
 echo "Exporting PostgreSQL 17 data and roles to $staging" >&2
 timeout 10m docker run --rm -i --name "$container" --entrypoint /bin/sh \
