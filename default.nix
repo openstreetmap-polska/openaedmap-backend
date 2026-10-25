@@ -57,7 +57,8 @@ let
 
   entrypoint = pkgs.writeShellScriptBin "entrypoint" ''
     set -ex
-    rm -f data/postgres/postmaster.pid
+    # PID files survive a restart; the container's process namespace does not.
+    rm -f data/postgres/postmaster.pid data/supervisor/supervisord.pid
     dev-start
     set -o allexport
     ${pkgs.lib.optionalString (envTag != "") ''source "envs/app/${envTag}.env" set''}
