@@ -7,7 +7,6 @@ let
 
   pythonLibs = with pkgs; [
     file.out
-    libxml2.out
     zlib.out
     stdenv.cc.cc.lib
   ];
@@ -17,11 +16,11 @@ let
       name = "python";
       paths = [
         # Enable compiler optimizations when in production
-        (if isDevelopment then python314 else python314.override { enableOptimizations = true; })
+        (if isDevelopment then python315 else python315.override { enableOptimizations = true; })
       ];
       buildInputs = [ makeWrapper ];
       postBuild = ''
-        wrapProgram "$out/bin/python3.14" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
+        wrapProgram "$out/bin/python3.15" --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath pythonLibs}"
       '';
     });
 
@@ -158,7 +157,7 @@ let
       uv sync || exit $?
 
       echo "Activating Python virtual environment"
-      source .venv/bin/activate
+      source "''${UV_PROJECT_ENVIRONMENT:-.venv}/bin/activate"
 
       if [ -f .env ]; then
         echo "Loading .env file"

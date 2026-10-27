@@ -7,7 +7,6 @@ dependencies = [
   "httpx[brotli,zstd]",
   "numpy",
   "pillow",
-  "pyinstrument",
   "python-magic",
   "python-multipart",
   "scikit-learn",
@@ -17,7 +16,7 @@ dependencies = [
   "tzfpy",
 ]
 name = "openaedmap-backend"
-requires-python = "~=3.14.0"
+requires-python = "~=3.15.0"
 version = "0.0.0"
 
 [dependency-groups]
@@ -41,7 +40,7 @@ python-preference = "only-system"
 [tool.ruff]
 indent-width = 4
 line-length = 120
-target-version = "py314"
+target-version = "py315"
 
 [tool.ruff.lint]
 # custom + https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules

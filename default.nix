@@ -46,7 +46,7 @@ let
         mkdir -p $out/bin $out/lib
         find "${./.venv-runtime/bin}" -type f -executable -exec cp {} $out/bin \;
         sed -i '1s|^#!.*/python|#!/usr/bin/env python|' $out/bin/*
-        cp -r "${./.venv-runtime/lib/python3.14/site-packages}"/* $out/lib
+        cp -r "${./.venv-runtime/lib/python3.15/site-packages}"/* $out/lib
       '')
     ];
     pathsToLink = [

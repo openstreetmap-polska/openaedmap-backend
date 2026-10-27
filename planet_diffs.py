@@ -50,7 +50,7 @@ async def get_planet_diffs(sequence: int) -> ReplicationBatch:
         async with TaskGroup() as tasks:
             jobs = [tasks.create_task(fetch(number)) for number in range(sequence + 1, end + 1)]
         _, timestamp = await get_replication_state(end)
-        changes = await to_thread(reduce_changes, (change for job in jobs for change in job.result()))
+        changes = await to_thread(reduce_changes, (*job.result() for job in jobs))
         return ReplicationBatch(sequence + 1, end, timestamp, changes)
 
 
