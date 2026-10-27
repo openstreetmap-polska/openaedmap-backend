@@ -44,8 +44,6 @@ DEFAULT_CHANGESET_TAGS = {
     'website': WEBSITE,
 }
 
-CHANGESET_ID_PLACEHOLDER = '__CHANGESET_ID_PLACEHOLDER__'
-
 IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/jpg', 'image/png', 'image/webp'}
 IMAGE_LIMIT_PIXELS = 6 * 1000 * 1000  # 6 MP (e.g., 3000x2000)
 IMAGE_MAX_FILE_SIZE = 2 * 1024 * 1024  # 2 MB

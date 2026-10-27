@@ -108,6 +108,56 @@ async def test_valid_images_preserve_bytes_and_cache_policy(monkeypatch, path):
     assert response.headers['cache-control'].startswith('public,')
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'metadata',
+    [
+        '<META CONTENT="https://images.example/aed.png?a=1&amp;b=2" PROPERTY="og:image">',
+        (
+            '<script>const fake = \'<meta property="og:image" content="https://wrong.example">\';</script>'
+            '<meta property="og:image" content="https://images.example/aed.png?a=1&amp;b=2"/>'
+            '<meta property="og:image" content="https://wrong.example">'
+        ),
+    ],
+    ids=('uppercase-attributes', 'script-and-later-image'),
+)
+async def test_commons_metadata_selects_first_image_and_decodes_html_entities(monkeypatch, metadata):
+    buffer = BytesIO()
+    Image.new('RGB', (2, 2), color=(47, 82, 193)).save(buffer, format='PNG')
+    image = buffer.getvalue()
+    requests = []
+
+    def handler(request):
+        if request.url.host == 'commons.wikimedia.org':
+            return httpx.Response(200, text=metadata)
+        requests.append(str(request.url))
+        return httpx.Response(200, content=image, headers={'Content-Type': 'image/png'})
+
+    async with _proxy_client(monkeypatch, handler) as client:
+        response = await client.get(COMMONS_PATH)
+
+    assert response.status_code == 200
+    assert response.content == image
+    assert requests == ['https://images.example/aed.png?a=1&b=2']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'metadata',
+    [
+        '<html>No image</html>',
+        '<meta property="og:image"><meta property="og:image" content="https://images.example/later.png">',
+    ],
+    ids=('missing-meta', 'missing-content'),
+)
+async def test_commons_missing_image_metadata_returns_not_found(monkeypatch, metadata):
+    async with _proxy_client(monkeypatch, lambda _: httpx.Response(200, text=metadata)) as client:
+        response = await client.get(COMMONS_PATH)
+
+    assert response.status_code == 404
+    assert response.headers['cache-control'] == 'no-store'
+
+
 class _BrokenImageStream(httpx.AsyncByteStream):
     def __init__(self, failure):
         self.failure = failure

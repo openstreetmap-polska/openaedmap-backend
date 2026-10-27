@@ -1,17 +1,18 @@
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+from html.parser import HTMLParser
 from io import BytesIO
 from typing import Annotated
 from urllib.parse import unquote_plus
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 import httpx
 import magic
-from bs4 import BeautifulSoup, Tag
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
-from feedgen.feed import FeedGenerator
 from httpx_secure import SSRFProtectionError
 from pydantic import SecretStr
 from starlette.staticfiles import StaticFiles
@@ -20,7 +21,6 @@ from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
 from middlewares.cache_control_middleware import cache_control
 from models.payload import ImageKey, Payload
 from openstreetmap import OpenStreetMap, osm_user_has_active_block
-from osm_change import update_node_tags_osm_change
 from payload_response import payload_response
 from services.aed_service import AEDService
 from services.byte_cache import byte_cache
@@ -130,11 +130,27 @@ async def proxy_wikimedia_commons(request: Request, path_encoded: str):
 async def _wikimedia_payload(meta_url: str) -> Payload:
     async with _proxy_request(meta_url) as r:
         await r.aread()
-    bs = await run_blocking(BeautifulSoup, r.text, 'lxml')
-    og_image = bs.find('meta', property='og:image')
-    if not isinstance(og_image, Tag) or not isinstance(image_url := og_image.get('content'), str):
+    parser = _OpenGraphImageParser()
+    await run_blocking(parser.feed, r.text)
+    parser.close()
+    if parser.image_url is None:
         raise _image_unavailable(404)
-    return await _image_payload(image_url)
+    return await _image_payload(parser.image_url)
+
+
+class _OpenGraphImageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.image_url: str | None = None
+        self.found = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != 'meta' or self.found:
+            return
+        attributes = dict(attrs)
+        if attributes.get('property') == 'og:image':
+            self.found = True
+            self.image_url = attributes.get('content')
 
 
 @router.post('/upload')
@@ -187,7 +203,7 @@ async def upload(
     if node_xml is None:
         return Response(f'Node {node_id} not found on remote', 404)
 
-    osm_change = update_node_tags_osm_change(
+    await osm.update_node_tags(
         node_xml,
         {
             'image': photo_url,
@@ -195,7 +211,6 @@ async def upload(
         },
     )
 
-    await osm.upload_osm_change(osm_change)
     return True
 
 
@@ -207,25 +222,24 @@ async def report(id: Annotated[str, Form()]):
 
 @router.get('/report/rss.xml')
 async def report_rss(request: Request):
-    fg = FeedGenerator()
-    fg.title('AED Photo Reports')
-    fg.description('This feed contains a list of recent AED photo reports')
-    fg.link(href=str(request.url), rel='self')
+    rss = Element('rss', version='2.0', attrib={'xmlns:atom': 'http://www.w3.org/2005/Atom'})
+    channel = SubElement(rss, 'channel')
+    SubElement(channel, 'title').text = 'AED Photo Reports'
+    SubElement(channel, 'link').text = str(request.url)
+    SubElement(channel, 'description').text = 'This feed contains a list of recent AED photo reports'
+    SubElement(channel, 'atom:link', href=str(request.url), rel='self')
+    SubElement(channel, 'lastBuildDate').text = format_datetime(datetime.now(UTC))
 
     for report in await PhotoReportService.get_recent():
         photo = report.photo
 
-        fe = fg.add_entry(order='append')
-        fe.id(report.id)
-        fe.title('🚨 Received photo report')
-        fe.content(
-            '<br>'.join((
-                f'File name: {photo.file_path.name}',
-                f'Node: https://osm.org/node/{photo.node_id}',
-            )),
-            type='CDATA',
-        )
-        fe.link(href=f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp')
-        fe.published(report.created_at)
+        item = SubElement(channel, 'item')
+        SubElement(item, 'title').text = '🚨 Received photo report'
+        SubElement(item, 'link').text = f'{request.base_url}api/v1/photos/view/{report.photo_id}.webp'
+        SubElement(
+            item, 'description'
+        ).text = f'File name: {photo.file_path.name}<br>Node: https://osm.org/node/{photo.node_id}'
+        SubElement(item, 'guid', isPermaLink='false').text = report.id
+        SubElement(item, 'pubDate').text = format_datetime(report.created_at)
 
-    return Response(content=fg.rss_str(pretty=True), media_type='application/rss+xml')
+    return Response(content=tostring(rss, encoding='utf-8', xml_declaration=True), media_type='application/rss+xml')

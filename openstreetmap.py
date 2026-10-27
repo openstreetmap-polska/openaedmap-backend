@@ -1,13 +1,12 @@
 import logging
+from xml.etree.ElementTree import Element, SubElement, fromstring, tostring
 
-import xmltodict
 from pydantic import SecretStr
 from sentry_sdk import trace
 from starlette import status
 
-from config import CHANGESET_ID_PLACEHOLDER, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
+from config import CREATED_BY, DEFAULT_CHANGESET_TAGS, OPENSTREETMAP_API_URL
 from utils import HTTP, retry_exponential
-from xmltodict_postprocessor import xmltodict_postprocessor
 
 
 def osm_user_has_active_block(user: dict) -> bool:
@@ -32,52 +31,63 @@ class OpenStreetMap:
 
     @retry_exponential(10)
     @trace
-    async def get_node_xml(self, node_id: int) -> dict | None:
+    async def get_node_xml(self, node_id: int) -> Element | None:
         r = await HTTP.get(f'{OPENSTREETMAP_API_URL}node/{node_id}')
         if r.status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_410_GONE):
             return None
         r.raise_for_status()
-        return xmltodict.parse(
-            r.content,
-            postprocessor=xmltodict_postprocessor,
-            force_list=('tag',),
-        )['osm']['node']
+        root = fromstring(r.content)  # noqa: S314 - OSM API XML; ElementTree does not resolve external entities
+        node = root.find('node')
+        if node is None:
+            raise ValueError('OSM response has no node')
+        return node
 
     @trace
-    async def upload_osm_change(self, osm_change: str) -> str:
-        changeset = xmltodict.unparse({
-            'osm': {'changeset': {'tag': [{'@k': k, '@v': v} for k, v in DEFAULT_CHANGESET_TAGS.items()]}}
-        })
+    async def update_node_tags(self, node: Element, update_tags: dict[str, str]) -> str:
+        tags = {tag.attrib['k']: tag.attrib['v'] for tag in node.findall('tag')}
+        tags.update(update_tags)
+        for tag in node.findall('tag'):
+            node.remove(tag)
+        for key, value in tags.items():
+            SubElement(node, 'tag', k=key, v=value)
+        for attribute in ('timestamp', 'user', 'uid'):
+            node.attrib.pop(attribute, None)
+        change = Element('osmChange', version='0.6', generator=CREATED_BY)
+        SubElement(change, 'modify').append(node)
+
+        changeset = Element('osm')
+        metadata = SubElement(changeset, 'changeset')
+        for key, value in DEFAULT_CHANGESET_TAGS.items():
+            SubElement(metadata, 'tag', k=key, v=value)
+        headers = {
+            'Authorization': f'Bearer {self.access_token.get_secret_value()}',
+            'Content-Type': 'text/xml; charset=utf-8',
+        }
 
         r = await HTTP.put(
             f'{OPENSTREETMAP_API_URL}changeset/create',
-            headers={
-                'Authorization': f'Bearer {self.access_token.get_secret_value()}',
-                'Content-Type': 'text/xml; charset=utf-8',
-            },
-            content=changeset,
+            headers=headers,
+            content=tostring(changeset, encoding='utf-8', xml_declaration=True),
         )
         r.raise_for_status()
-        changeset_id = r.text
+        changeset_id = r.text.strip()
 
-        osm_change = osm_change.replace(CHANGESET_ID_PLACEHOLDER, changeset_id)
+        node.set('changeset', changeset_id)
         logging.info('Uploading changeset %s', changeset_id)
         logging.info('https://www.openstreetmap.org/changeset/%s', changeset_id)
 
-        r = await HTTP.post(
-            f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/upload',
-            headers={
-                'Authorization': f'Bearer {self.access_token.get_secret_value()}',
-                'Content-Type': 'text/xml; charset=utf-8',
-            },
-            content=osm_change,
-        )
-        r.raise_for_status()
-
-        r = await HTTP.put(
-            f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/close',
-            headers={'Authorization': f'Bearer {self.access_token.get_secret_value()}'},
-        )
-        r.raise_for_status()
+        try:
+            r = await HTTP.post(
+                f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/upload',
+                headers=headers,
+                content=tostring(change, encoding='utf-8', xml_declaration=True),
+            )
+            r.raise_for_status()
+        finally:
+            r = await HTTP.put(
+                f'{OPENSTREETMAP_API_URL}changeset/{changeset_id}/close',
+                headers=headers,
+            )
+            r.raise_for_status()
 
         return changeset_id

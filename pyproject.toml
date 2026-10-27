@@ -1,13 +1,10 @@
 [project]
 dependencies = [
   "asyncpg",
-  "beautifulsoup4[charset-normalizer,lxml]",
   "fastapi",
-  "feedgen",
   "h2corn",
   "httpx-secure",
   "httpx[brotli,zstd]",
-  "jinja2",
   "numpy",
   "pillow",
   "pyinstrument",
@@ -18,7 +15,6 @@ dependencies = [
   "starlette-compress",
   "supervisor",
   "tzfpy",
-  "xmltodict",
 ]
 name = "openaedmap-backend"
 requires-python = "~=3.14.0"
