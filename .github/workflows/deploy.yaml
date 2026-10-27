@@ -24,30 +24,26 @@ jobs:
   check:
     name: Check and build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+
     concurrency:
       group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
+
     env:
       SENTRY_RELEASE: ${{ github.sha }}
       TAG: ${{ inputs.tag || 'dev' }}
       UV_LOCKED: "true"
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
       - uses: nixbuild/nix-quick-install-action@9f63be77f412a248c9d9a65a4c82cf066cdf8f0c # v35
-      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix', 'shell.nix', 'uv.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
-          save: ${{ github.event_name != 'pull_request' }}
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: uv-cache
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix') }}-${{ hashFiles('uv.lock') }}
-          restore-keys: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('nixpkgs.nix') }}-
+          use-flakehub: false
+
       - name: Lint, type-check and test
         run: |
           nix-shell --pure --keep UV_LOCKED --run '
@@ -58,56 +54,59 @@ jobs:
             nixfmt --check *.nix
             actionlint
             zizmor .github
-            uv run pytest --junitxml=test-results.xml
+            uv run pytest --showlocals --junitxml=test-results.xml
           '
+
       - name: Build and smoke-test the release image
         run: |
           # shellcheck disable=SC2016
           nix-shell --pure --keep SENTRY_RELEASE --keep TAG --keep UV_LOCKED --run '
             set -euo pipefail
-            UV_PROJECT_ENVIRONMENT=.venv-runtime uv sync --locked --no-default-groups
+            UV_PROJECT_ENVIRONMENT=.venv-runtime uv sync --no-default-groups
             streamer=$(nix-build --no-out-link)
             "$streamer" > backend.tar
           '
           docker load < backend.tar
           docker run --rm --entrypoint python \
             -v "$PWD/scripts:/checks:ro" "backend:$TAG" /checks/smoke_image.py
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name != 'pull_request'
         with:
           name: backend-image
           path: backend.tar
           if-no-files-found: error
+
+      - uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2.6
+        if: ${{ !cancelled() && hashFiles('test-results.xml') != '' }}
+        with:
+          paths: test-results.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && hashFiles('test-results.xml') != '' }}
         with:
           name: test-results
           path: test-results.xml
-      - name: Prune unused package-cache entries
-        if: github.event_name != 'pull_request'
-        run: nix-shell --pure --keep UV_LOCKED --run 'uv cache prune'
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name != 'pull_request' && steps.uv-cache.outputs.cache-hit != 'true'
-        with:
-          path: ~/.cache/uv
-          key: ${{ steps.uv-cache.outputs.cache-primary-key }}
 
   deploy:
     name: Deploy tested image
     needs: check
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+
     concurrency:
       group: deploy-${{ inputs.tag || 'dev' }}
       cancel-in-progress: false
+
     env:
       TAG: ${{ inputs.tag || 'dev' }}
       RELEASE: ${{ github.sha }}
+
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: backend-image
+          digest-mismatch: error
+
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -130,6 +129,7 @@ jobs:
             ControlPersist 60
             ControlPath ~/.ssh/control-%C
           EOF
+
       - name: Load and deploy the verified image
         run: |
           ssh remote 'docker load' < backend.tar
@@ -143,6 +143,7 @@ jobs:
           docker compose --env-file "envs/compose/$TAG.env" down --remove-orphans
           docker compose --env-file "envs/compose/$TAG.env" up -d
           EOF
+
       - name: Close SSH connection
         if: ${{ always() }}
         run: ssh -O exit remote || true
