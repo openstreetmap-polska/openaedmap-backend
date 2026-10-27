@@ -1,16 +1,15 @@
 [project]
 dependencies = [
+  "aiohttp",
   "asyncpg",
   "fastapi",
   "h2corn",
-  "httpx-secure",
-  "httpx[brotli,zstd]",
   "numpy",
   "pillow",
   "python-magic",
   "python-multipart",
   "scikit-learn",
-  "sentry-sdk[asyncpg,fastapi,httpx]",
+  "sentry-sdk[aiohttp,asyncpg,fastapi]",
   "starlette-compress",
   "supervisor",
   "tzfpy",
@@ -20,7 +19,7 @@ requires-python = "~=3.15.0"
 version = "0.0.0"
 
 [dependency-groups]
-test = ["mapbox-vector-tile", "pytest", "pytest-asyncio"]
+test = ["aiointercept", "httpx", "mapbox-vector-tile", "pytest", "pytest-asyncio"]
 
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers", "-ra", "--import-mode=importlib"]

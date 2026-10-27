@@ -1,23 +1,29 @@
 import asyncio
+import re
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from io import BytesIO
 from urllib.parse import quote_plus
 
+import aiohttp
 import httpx
 import pytest
+from aiointercept import CallbackResult
 from fastapi import FastAPI
+from multidict import CIMultiDict, CIMultiDictProxy
 from PIL import Image
+from yarl import URL
+
+from tests.http import mock_http
 
 IMAGE_URL = 'https://images.example/aed.png?signature=private-value'
 DIRECT_PATH = f'/api/v1/photos/proxy/direct/{quote_plus(IMAGE_URL)}'
 COMMONS_PATH = '/api/v1/photos/proxy/wikimedia-commons/File:Defibrillator.png'
+REQUEST_INFO = aiohttp.RequestInfo(URL(IMAGE_URL), 'GET', CIMultiDictProxy(CIMultiDict()))
 
 
 @asynccontextmanager
-async def _proxy_client(
-    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
-) -> AsyncGenerator[httpx.AsyncClient]:
+async def _proxy_client(handler: Callable[..., CallbackResult], *, middlewares=()) -> AsyncGenerator[httpx.AsyncClient]:
     from api.v1 import photos
     from middlewares.cache_control_middleware import CacheControlMiddleware
     from services.byte_cache import byte_cache
@@ -26,8 +32,8 @@ async def _proxy_client(
     app = FastAPI()
     app.include_router(photos.router, prefix='/api/v1')
     app.add_middleware(CacheControlMiddleware)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as upstream:
-        monkeypatch.setattr(photos, 'HTTP', upstream)
+    async with mock_http(middlewares=middlewares) as upstream:
+        upstream.get(re.compile(r'https://.*'), callback=handler, repeat=True)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://backend') as client:
             try:
                 yield client
@@ -35,8 +41,8 @@ async def _proxy_client(
                 await byte_cache.close()
 
 
-def _commons_metadata() -> httpx.Response:
-    return httpx.Response(200, text=f'<html><meta property="og:image" content="{IMAGE_URL}"></html>')
+def _commons_metadata() -> CallbackResult:
+    return CallbackResult(status=200, body=f'<html><meta property="og:image" content="{IMAGE_URL}"></html>')
 
 
 @pytest.mark.asyncio
@@ -45,14 +51,14 @@ def _commons_metadata() -> httpx.Response:
     ('upstream_status', 'expected_status'),
     [(401, 404), (403, 404), (404, 404), (410, 404), (429, 502), (500, 502), (503, 502)],
 )
-async def test_upstream_http_failures_are_handled(monkeypatch, phase, upstream_status, expected_status):
-    def handler(request):
-        if phase == 'commons-image' and request.url.host == 'commons.wikimedia.org':
+async def test_upstream_http_failures_are_handled(phase, upstream_status, expected_status):
+    def handler(url, **kwargs):
+        if phase == 'commons-image' and url.host == 'commons.wikimedia.org':
             return _commons_metadata()
-        return httpx.Response(upstream_status, text='Upstream diagnostic containing private information')
+        return CallbackResult(status=upstream_status, body='Upstream diagnostic containing private information')
 
     path = DIRECT_PATH if phase == 'direct' else COMMONS_PATH
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(handler) as client:
         response = await client.get(path)
 
     assert response.status_code == expected_status
@@ -65,21 +71,23 @@ async def test_upstream_http_failures_are_handled(monkeypatch, phase, upstream_s
 @pytest.mark.parametrize(
     ('failure', 'expected_status'),
     [
-        (httpx.ConnectError, 502),
-        (httpx.ReadTimeout, 504),
-        (httpx.TooManyRedirects, 502),
-        (httpx.InvalidURL, 400),
-        (httpx.UnsupportedProtocol, 400),
+        (aiohttp.ClientConnectionError, 502),
+        (TimeoutError, 504),
+        (aiohttp.TooManyRedirects, 502),
+        (aiohttp.InvalidURL, 400),
+        (aiohttp.NonHttpUrlClientError, 400),
     ],
 )
-async def test_upstream_transport_failures_are_handled(monkeypatch, phase, failure, expected_status):
-    def handler(request):
+async def test_upstream_transport_failures_are_handled(phase, failure, expected_status):
+    async def fail_request(request, handler):
         if phase == 'commons-image' and request.url.host == 'commons.wikimedia.org':
-            return _commons_metadata()
+            return await handler(request)
+        if failure is aiohttp.TooManyRedirects:
+            raise failure(REQUEST_INFO, ())
         raise failure('Upstream diagnostic containing private information')
 
     path = DIRECT_PATH if phase == 'direct' else COMMONS_PATH
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(lambda *_args, **_kwargs: _commons_metadata(), middlewares=(fail_request,)) as client:
         response = await client.get(path)
 
     assert response.status_code == expected_status
@@ -89,17 +97,17 @@ async def test_upstream_transport_failures_are_handled(monkeypatch, phase, failu
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('path', [DIRECT_PATH, COMMONS_PATH], ids=('direct', 'commons'))
-async def test_valid_images_preserve_bytes_and_cache_policy(monkeypatch, path):
+async def test_valid_images_preserve_bytes_and_cache_policy(path):
     buffer = BytesIO()
     Image.new('RGB', (2, 2), color=(31, 92, 173)).save(buffer, format='PNG')
     image = buffer.getvalue()
 
-    def handler(request):
-        if request.url.host == 'commons.wikimedia.org':
+    def handler(url, **kwargs):
+        if url.host == 'commons.wikimedia.org':
             return _commons_metadata()
-        return httpx.Response(200, content=image, headers={'Content-Type': 'image/png'})
+        return CallbackResult(status=200, body=image, headers={'Content-Type': 'image/png'})
 
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(handler) as client:
         response = await client.get(path)
 
     assert response.status_code == 200
@@ -121,19 +129,19 @@ async def test_valid_images_preserve_bytes_and_cache_policy(monkeypatch, path):
     ],
     ids=('uppercase-attributes', 'script-and-later-image'),
 )
-async def test_commons_metadata_selects_first_image_and_decodes_html_entities(monkeypatch, metadata):
+async def test_commons_metadata_selects_first_image_and_decodes_html_entities(metadata):
     buffer = BytesIO()
     Image.new('RGB', (2, 2), color=(47, 82, 193)).save(buffer, format='PNG')
     image = buffer.getvalue()
     requests = []
 
-    def handler(request):
-        if request.url.host == 'commons.wikimedia.org':
-            return httpx.Response(200, text=metadata)
-        requests.append(str(request.url))
-        return httpx.Response(200, content=image, headers={'Content-Type': 'image/png'})
+    def handler(url, **kwargs):
+        if url.host == 'commons.wikimedia.org':
+            return CallbackResult(status=200, body=metadata)
+        requests.append(str(url))
+        return CallbackResult(status=200, body=image, headers={'Content-Type': 'image/png'})
 
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(handler) as client:
         response = await client.get(COMMONS_PATH)
 
     assert response.status_code == 200
@@ -150,50 +158,72 @@ async def test_commons_metadata_selects_first_image_and_decodes_html_entities(mo
     ],
     ids=('missing-meta', 'missing-content'),
 )
-async def test_commons_missing_image_metadata_returns_not_found(monkeypatch, metadata):
-    async with _proxy_client(monkeypatch, lambda _: httpx.Response(200, text=metadata)) as client:
+async def test_commons_missing_image_metadata_returns_not_found(metadata):
+    async with _proxy_client(lambda *_args, **_kwargs: CallbackResult(status=200, body=metadata)) as client:
         response = await client.get(COMMONS_PATH)
 
     assert response.status_code == 404
     assert response.headers['cache-control'] == 'no-store'
 
 
-class _BrokenImageStream(httpx.AsyncByteStream):
-    def __init__(self, failure):
-        self.failure = failure
-        self.closed = False
+@asynccontextmanager
+async def _stream_client(monkeypatch, *, stall, read_timeout=None):
+    import http_client
+    from api.v1.photos import router
+    from services.byte_cache import byte_cache
 
-    async def __aiter__(self):
-        yield b'partial image'
-        raise self.failure('Interrupted download')
+    sent, closed = asyncio.Event(), asyncio.Event()
 
-    async def aclose(self):
-        self.closed = True
+    async def serve(reader, writer):
+        try:
+            await reader.readuntil(b'\r\n\r\n')
+            writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 100\r\n\r\npartial image')
+            await writer.drain()
+            sent.set()
+            if stall:
+                await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            closed.set()
+
+    byte_cache.invalidate(lambda _: True)
+    app = FastAPI()
+    app.include_router(router, prefix='/api/v1')
+    async with (
+        asyncio.TaskGroup() as tasks,
+        await asyncio.start_server(
+            lambda reader, writer: tasks.create_task(serve(reader, writer)), '127.0.0.1', 0
+        ) as server,
+    ):
+        url = f'http://127.0.0.1:{server.sockets[0].getsockname()[1]}/image'
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=read_timeout)) as upstream:
+            monkeypatch.setattr(http_client, 'client', lambda: upstream)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+                try:
+                    yield client, f'/api/v1/photos/proxy/direct/{quote_plus(url)}', sent, closed
+                finally:
+                    await byte_cache.close()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(('failure', 'expected_status'), [(httpx.ReadError, 502), (httpx.ReadTimeout, 504)])
-async def test_interrupted_downloads_are_handled_and_closed(monkeypatch, failure, expected_status):
-    stream = _BrokenImageStream(failure)
-
-    def handler(request):
-        return httpx.Response(200, stream=stream, headers={'Content-Type': 'image/png'})
-
-    async with _proxy_client(monkeypatch, handler) as client:
-        response = await client.get(DIRECT_PATH)
+@pytest.mark.parametrize(('stall', 'expected_status'), [(False, 502), (True, 504)], ids=('truncated', 'stalled'))
+async def test_interrupted_downloads_are_handled_and_closed(monkeypatch, stall, expected_status):
+    async with _stream_client(monkeypatch, stall=stall, read_timeout=0.05) as (client, path, sent, closed):
+        response = await client.get(path)
 
     assert response.status_code == expected_status
-    assert stream.closed
+    assert sent.is_set()
+    assert closed.is_set()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('content_type', ['text/html', None])
-async def test_non_image_responses_are_handled(monkeypatch, content_type):
-    def handler(request):
-        headers = {'Content-Type': content_type} if content_type else {}
-        return httpx.Response(200, content=b'<html>Not an image</html>', headers=headers)
+@pytest.mark.parametrize('content_type', ['text/html', 'application/octet-stream'])
+async def test_non_image_responses_are_handled(content_type):
+    def handler(url, **kwargs):
+        return CallbackResult(status=200, body=b'<html>Not an image</html>', headers={'Content-Type': content_type})
 
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(handler) as client:
         response = await client.get(DIRECT_PATH)
 
     assert response.status_code == 502
@@ -206,10 +236,10 @@ async def test_oversized_images_are_handled(monkeypatch):
 
     monkeypatch.setattr(photos, 'IMAGE_REMOTE_MAX_FILE_SIZE', 8)
 
-    def handler(request):
-        return httpx.Response(200, content=b'oversized image', headers={'Content-Type': 'image/png'})
+    def handler(url, **kwargs):
+        return CallbackResult(status=200, body=b'oversized image', headers={'Content-Type': 'image/png'})
 
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(handler) as client:
         response = await client.get(DIRECT_PATH)
 
     assert response.status_code == 502
@@ -218,7 +248,7 @@ async def test_oversized_images_are_handled(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('phase', ['direct', 'commons-metadata', 'commons-image'])
-async def test_expected_failures_do_not_report_errors_to_sentry(monkeypatch, phase):
+async def test_expected_failures_do_not_report_errors_to_sentry(phase):
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -234,12 +264,15 @@ async def test_expected_failures_do_not_report_errors_to_sentry(monkeypatch, pha
                 if event is not None:
                     events.append(event)
 
-    def handler(request):
+    def handler(url, **kwargs):
+        if phase == 'commons-image' and url.host == 'commons.wikimedia.org':
+            return _commons_metadata()
+        return CallbackResult(status=503)
+
+    async def fail_unexpectedly(request, handler):
         if unexpected:
             raise RuntimeError('Unexpected application failure')
-        if phase == 'commons-image' and request.url.host == 'commons.wikimedia.org':
-            return _commons_metadata()
-        return httpx.Response(503)
+        return await handler(request)
 
     path = DIRECT_PATH if phase == 'direct' else COMMONS_PATH
     with (
@@ -252,7 +285,7 @@ async def test_expected_failures_do_not_report_errors_to_sentry(monkeypatch, pha
         sentry_sdk.isolation_scope() as scope,
     ):
         scope.set_client(sentry_client)
-        async with _proxy_client(monkeypatch, handler) as client:
+        async with _proxy_client(handler, middlewares=(fail_unexpectedly,)) as client:
             response = await client.get(path)
             assert response.status_code == 502
             assert events == []
@@ -265,15 +298,22 @@ async def test_expected_failures_do_not_report_errors_to_sentry(monkeypatch, pha
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure', [asyncio.CancelledError, RuntimeError, httpx.LocalProtocolError])
-async def test_cancellation_and_unexpected_errors_propagate(monkeypatch, failure):
-    stream = _BrokenImageStream(failure)
+@pytest.mark.parametrize('failure', [RuntimeError, TypeError])
+async def test_unexpected_errors_propagate(failure):
+    async def fail_request(request, handler):
+        raise failure('Unexpected application failure')
 
-    def handler(request):
-        return httpx.Response(200, stream=stream, headers={'Content-Type': 'image/png'})
-
-    async with _proxy_client(monkeypatch, handler) as client:
+    async with _proxy_client(lambda *_args, **_kwargs: _commons_metadata(), middlewares=(fail_request,)) as client:
         with pytest.raises(failure):
             await client.get(DIRECT_PATH)
 
-    assert stream.closed
+
+@pytest.mark.asyncio
+async def test_cancelled_download_closes_upstream_connection(monkeypatch):
+    async with _stream_client(monkeypatch, stall=True) as (client, path, sent, closed):
+        request = asyncio.create_task(client.get(path))
+        await sent.wait()
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+    assert closed.is_set()

@@ -88,7 +88,26 @@ def check_outputs() -> None:
     clustered, _ = get('tile/6/32/32.mvt')
     if not clustered.startswith(b'\x1a'):
         raise RuntimeError('Image did not return a clustered vector tile')
-    for package in ('alembic', 'mapbox_vector_tile', 'pyproj', 'pytest', 'shapely', 'sqlalchemy', 'valkey'):
+    try:
+        get('photos/proxy/direct/http://127.0.0.1:8000/private')
+    except urllib.error.HTTPError as exc:
+        if exc.code != 400 or exc.headers.get('Cache-Control') != 'no-store':
+            raise RuntimeError('Image proxy did not reject a private address correctly') from exc
+    else:
+        raise RuntimeError('Image proxy accepted a private address')
+    for package in (
+        'aiointercept',
+        'alembic',
+        'httpx',
+        'httpx_secure',
+        'mapbox_vector_tile',
+        'pyproj',
+        'pytest',
+        'shapely',
+        'sqlalchemy',
+        'valkey',
+        'zstandard',
+    ):
         if importlib.util.find_spec(package) is not None:
             raise RuntimeError(f'Unexpected package in runtime image: {package}')
 

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette_compress import CompressMiddleware
 
+import http_client
 from api.v1 import countries, node, photos, tile
 from db import close_database, open_database
 from json_response import JSONResponseUTF8
@@ -14,28 +15,27 @@ from middlewares.version_middleware import VersionMiddleware
 from services.aed_service import AEDService
 from services.byte_cache import byte_cache
 from services.country_service import CountryService
-from utils import HTTP
 
 
 @asynccontextmanager
 async def lifespan(_):
-    await open_database()
-    try:
-        async with TaskGroup() as tg:
-            country_started = Event()
-            tg.create_task(CountryService.update_db_task(country_started))
-            await country_started.wait()
-            aed_started = Event()
-            tg.create_task(AEDService.update_db_task(aed_started))
-            await aed_started.wait()
+    async with http_client.lifespan():
+        await open_database()
+        try:
+            async with TaskGroup() as tg:
+                country_started = Event()
+                tg.create_task(CountryService.update_db_task(country_started))
+                await country_started.wait()
+                aed_started = Event()
+                tg.create_task(AEDService.update_db_task(aed_started))
+                await aed_started.wait()
 
-            yield
+                yield
 
-            tg.cancel()
-    finally:
-        await byte_cache.close()
-        await close_database()
-        await HTTP.aclose()
+                tg.cancel()
+        finally:
+            await byte_cache.close()
+            await close_database()
 
 
 app = FastAPI(lifespan=lifespan, default_response_class=JSONResponseUTF8)

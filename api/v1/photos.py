@@ -9,14 +9,14 @@ from typing import Annotated
 from urllib.parse import unquote_plus
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-import httpx
+import aiohttp
 import magic
 from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
-from httpx_secure import SSRFProtectionError
 from pydantic import SecretStr
 from starlette.staticfiles import StaticFiles
 
+import http_client
 from config import IMAGE_CONTENT_TYPES, IMAGE_REMOTE_MAX_FILE_SIZE
 from middlewares.cache_control_middleware import cache_control
 from models.payload import ImageKey, Payload
@@ -26,7 +26,7 @@ from services.aed_service import AEDService
 from services.byte_cache import byte_cache
 from services.photo_report_service import PhotoReportService
 from services.photo_service import PhotoService
-from utils import HTTP, get_wikimedia_commons_url, run_blocking
+from utils import get_wikimedia_commons_url, run_blocking
 
 router = APIRouter(prefix='/photos')
 _files = StaticFiles()
@@ -38,25 +38,22 @@ def _image_unavailable(status_code: int) -> HTTPException:
 
 
 @asynccontextmanager
-async def _proxy_request(url: str) -> AsyncGenerator[httpx.Response]:
+async def _proxy_request(url: str) -> AsyncGenerator[aiohttp.ClientResponse]:
     try:
-        async with HTTP.stream('GET', url) as response:
+        async with http_client.client().get(http_client.request_url(url)) as response:
             response.raise_for_status()
             yield response
-    except httpx.HTTPStatusError as exc:
-        status_code = 404 if exc.response.status_code in {401, 403, 404, 410} else 502
+    except aiohttp.ClientResponseError as exc:
+        status_code = 404 if exc.status in {401, 403, 404, 410} else 502
         raise _image_unavailable(status_code) from exc
-    except httpx.TimeoutException as exc:
+    except TimeoutError as exc:
         raise _image_unavailable(504) from exc
-    except (httpx.InvalidURL, httpx.UnsupportedProtocol, SSRFProtectionError) as exc:
+    except aiohttp.ClientConnectorError as exc:
+        status_code = 400 if isinstance(exc.os_error, http_client.UnsafeAddressError) else 502
+        raise _image_unavailable(status_code) from exc
+    except (aiohttp.InvalidURL, aiohttp.NonHttpUrlClientError, http_client.UnsafeAddressError) as exc:
         raise _image_unavailable(400) from exc
-    except (
-        httpx.NetworkError,
-        httpx.RemoteProtocolError,
-        httpx.ProxyError,
-        httpx.DecodingError,
-        httpx.TooManyRedirects,
-    ) as exc:
+    except aiohttp.ClientError as exc:
         raise _image_unavailable(502) from exc
 
 
@@ -68,7 +65,7 @@ async def _fetch_image(url: str) -> tuple[bytes, str]:
             raise _image_unavailable(502)
 
         with BytesIO() as buffer:
-            async for chunk in r.aiter_bytes(1024 * 1024):
+            async for chunk in r.content.iter_chunked(1024 * 1024):
                 buffer.write(chunk)
                 if buffer.tell() > IMAGE_REMOTE_MAX_FILE_SIZE:
                     raise _image_unavailable(502)
@@ -129,9 +126,9 @@ async def proxy_wikimedia_commons(request: Request, path_encoded: str):
 
 async def _wikimedia_payload(meta_url: str) -> Payload:
     async with _proxy_request(meta_url) as r:
-        await r.aread()
+        text = await r.text()
     parser = _OpenGraphImageParser()
-    await run_blocking(parser.feed, r.text)
+    await run_blocking(parser.feed, text)
     parser.close()
     if parser.image_url is None:
         raise _image_unavailable(404)

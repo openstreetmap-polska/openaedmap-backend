@@ -1,10 +1,10 @@
 import gzip
 from asyncio import timeout
 
-import httpx
 import pytest
 
 from tests.data import seed_aeds, seed_countries
+from tests.http import mock_http
 
 
 @pytest.mark.asyncio
@@ -118,9 +118,7 @@ async def test_irrelevant_replication_advances_cursor_without_changing_content_r
 
 
 @pytest.mark.asyncio
-async def test_updater_resumes_committed_cursor_without_rebuilding_snapshot(database, monkeypatch):
-    import overpass
-    import planet_diffs
+async def test_updater_resumes_committed_cursor_without_rebuilding_snapshot(database):
     from config import PLANET_REPLICA_URL
     from services.aed_service import AEDService, _update_db
     from services.state_service import StateService
@@ -136,12 +134,9 @@ async def test_updater_resumes_committed_cursor_without_rebuilding_snapshot(data
             </node></create></osmChange>"""),
     }
 
-    def respond(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=responses[str(request.url)])
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as upstream:
-        monkeypatch.setattr(planet_diffs, 'HTTP', upstream)
-        monkeypatch.setattr(overpass, 'HTTP', upstream)
+    async with mock_http() as upstream:
+        for url, body in responses.items():
+            upstream.get(url, body=body, repeat=True)
         async with timeout(10):
             await _update_db()
     state = await StateService.get('aed')

@@ -8,9 +8,9 @@ from io import BytesIO
 from typing import NoReturn
 from xml.parsers import expat
 
+import http_client
 from config import PLANET_DIFF_TIMEOUT, PLANET_REPLICA_URL
 from models.aed import AED, ConflictingNodeVersionError, NodeChange, RemovedNode
-from utils import HTTP
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +43,12 @@ async def get_planet_diffs(sequence: int) -> ReplicationBatch:
 
         async def fetch(number: int) -> tuple[NodeChange, ...]:
             async with slots:
-                response = await HTTP.get(f'{PLANET_REPLICA_URL}{_format_sequence_number(number)}.osc.gz')
-                response.raise_for_status()
-                return await to_thread(parse_diff, response.content)
+                async with http_client.client().get(
+                    f'{PLANET_REPLICA_URL}{_format_sequence_number(number)}.osc.gz'
+                ) as response:
+                    response.raise_for_status()
+                    content = await response.read()
+                return await to_thread(parse_diff, content)
 
         async with TaskGroup() as tasks:
             jobs = [tasks.create_task(fetch(number)) for number in range(sequence + 1, end + 1)]
@@ -81,9 +84,9 @@ async def sequence_before(timestamp: float) -> int:
 
 async def get_replication_state(sequence: int | None = None) -> tuple[int, float]:
     path = 'state.txt' if sequence is None else f'{_format_sequence_number(sequence)}.state.txt'
-    response = await HTTP.get(f'{PLANET_REPLICA_URL}{path}')
-    response.raise_for_status()
-    text = response.text.replace('\\:', ':')
+    async with http_client.client().get(f'{PLANET_REPLICA_URL}{path}') as response:
+        response.raise_for_status()
+        text = (await response.text()).replace('\\:', ':')
     number = re.search(r'^sequenceNumber=(\d+)$', text, re.MULTILINE)
     date = re.search(r'^timestamp=(\S+)$', text, re.MULTILINE)
     if number is None or date is None:

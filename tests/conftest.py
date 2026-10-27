@@ -45,6 +45,14 @@ async def postgres_pool(application_config):
         await close_database()
 
 
+@pytest_asyncio.fixture(scope='session', loop_scope='session', autouse=True)
+async def http_session(application_config):
+    import http_client
+
+    async with http_client.lifespan():
+        yield http_client.client()
+
+
 @pytest_asyncio.fixture(loop_scope='session')
 async def database(postgres_pool):
     from db import connection

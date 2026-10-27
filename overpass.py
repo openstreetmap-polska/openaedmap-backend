@@ -1,10 +1,13 @@
+import json
 from asyncio import to_thread
 from datetime import UTC, datetime
 
+from aiohttp import ClientTimeout
 from sentry_sdk import trace
 
+import http_client
 from config import OVERPASS_API_URL
-from utils import HTTP, retry_exponential
+from utils import retry_exponential
 
 
 @retry_exponential(None)
@@ -13,9 +16,14 @@ async def query_overpass(query: str, *, timeout: int, must_return: bool = False)
     join = '' if query.startswith('[') else ';'
     query = f'[out:json][timeout:{timeout}]{join}{query}'
 
-    r = await HTTP.post(OVERPASS_API_URL, data={'data': query}, timeout=timeout * 2)
-    r.raise_for_status()
-    data = await to_thread(r.json)
+    async with http_client.client().post(
+        OVERPASS_API_URL,
+        data={'data': query},
+        timeout=ClientTimeout(total=None, connect=timeout * 2, sock_connect=timeout * 2, sock_read=timeout * 2),
+    ) as response:
+        response.raise_for_status()
+        content = await response.read()
+    data = await to_thread(json.loads, content)
 
     data_timestamp = (
         datetime

@@ -6,8 +6,10 @@ import httpx
 import pytest
 from fastapi import FastAPI, UploadFile
 from PIL import Image
+from yarl import URL
 
 from tests.data import seed_aeds
+from tests.http import mock_http
 
 
 def image_file():
@@ -35,35 +37,29 @@ async def test_uploaded_photo_has_durable_bytes_before_report_publication(databa
 
 
 @pytest.mark.asyncio
-async def test_photo_upload_publishes_file_and_updates_remote_node_tags(database, monkeypatch):
-    import openstreetmap
+async def test_photo_upload_publishes_file_and_updates_remote_node_tags(database):
     from api.v1.photos import router
+    from config import OPENSTREETMAP_API_URL
     from services.photo_service import PhotoService
 
     await seed_aeds([(1003, 4, {'emergency': 'defibrillator'}, 21.3, 51.2, [])])
-    uploads = []
-
-    def handler(request):
-        if request.url.path.endswith('/user/details.json'):
-            return httpx.Response(200, json={'user': {'id': 2004, 'blocks': {'received': {'active': 0}}}})
-        if request.url.path.endswith('/node/1003'):
-            return httpx.Response(
-                200,
-                text='<osm><node id="1003" version="4" lat="51.2" lon="21.3">'
-                '<tag k="emergency" v="defibrillator"/></node></osm>',
-            )
-        if request.url.path.endswith('/create'):
-            return httpx.Response(200, text='807')
-        if request.url.path.endswith('/upload'):
-            uploads.append(request.content)
-        return httpx.Response(200)
-
     app = FastAPI()
     app.include_router(router, prefix='/api/v1')
     image = image_file()
     try:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as upstream:
-            monkeypatch.setattr(openstreetmap, 'HTTP', upstream)
+        async with mock_http() as upstream:
+            upstream.get(
+                f'{OPENSTREETMAP_API_URL}user/details.json',
+                payload={'user': {'id': 2004, 'blocks': {'received': {'active': 0}}}},
+            )
+            upstream.get(
+                f'{OPENSTREETMAP_API_URL}node/1003',
+                body='<osm><node id="1003" version="4" lat="51.2" lon="21.3">'
+                '<tag k="emergency" v="defibrillator"/></node></osm>',
+            )
+            upstream.put(f'{OPENSTREETMAP_API_URL}changeset/create', body='807')
+            upstream.post(f'{OPENSTREETMAP_API_URL}changeset/807/upload')
+            upstream.put(f'{OPENSTREETMAP_API_URL}changeset/807/close')
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
                 response = await client.post(
                     '/api/v1/photos/upload',
@@ -74,13 +70,14 @@ async def test_photo_upload_publishes_file_and_updates_remote_node_tags(database
                     },
                     files={'file': ('aed.png', image.file, 'image/png')},
                 )
+            uploads = list(upstream.requests[('POST', URL(f'{OPENSTREETMAP_API_URL}changeset/807/upload'))])
     finally:
         await image.close()
 
     assert response.status_code == 200
     assert response.json() is True
     assert len(uploads) == 1
-    modified = fromstring(uploads[0]).find('modify/node')  # noqa: S314 - application-generated XML
+    modified = fromstring(uploads[0].captured_body).find('modify/node')  # noqa: S314 - application-generated XML
     assert modified is not None
     assert modified.attrib['changeset'] == '807'
     tags = {tag.attrib['k']: tag.attrib['v'] for tag in modified.findall('tag')}

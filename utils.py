@@ -5,19 +5,6 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from functools import wraps
 
-from httpx import AsyncClient, Timeout
-from httpx_secure import httpx_ssrf_protection
-
-from config import USER_AGENT
-
-HTTP = httpx_ssrf_protection(
-    AsyncClient(
-        headers={'User-Agent': USER_AGENT},
-        timeout=Timeout(60, connect=15),
-        follow_redirects=True,
-    )
-)
-
 
 async def run_blocking[**P, T](function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
     """Keep ownership of file/native work until it actually stops after cancellation."""

@@ -4,17 +4,17 @@ from compression.zstd import decompress
 
 from sentry_sdk import trace
 
+import http_client
 from config import COUNTRY_GEOJSON_URL
 from models.osm_country import OSMCountry
-from utils import HTTP
 
 
 @trace
 async def get_osm_countries() -> list[OSMCountry]:
-    r = await HTTP.get(COUNTRY_GEOJSON_URL)
-    r.raise_for_status()
-
-    return await to_thread(_decode_countries, r.content)
+    async with http_client.client().get(COUNTRY_GEOJSON_URL) as response:
+        response.raise_for_status()
+        content = await response.read()
+    return await to_thread(_decode_countries, content)
 
 
 def _decode_countries(content: bytes) -> list[OSMCountry]:
