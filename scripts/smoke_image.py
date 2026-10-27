@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import ssl
 import subprocess
 import sys
 import time
@@ -13,6 +14,9 @@ from pathlib import Path
 
 
 async def main() -> None:
+    if not ssl.create_default_context().cert_store_stats()['x509_ca']:
+        raise RuntimeError('Image has no trusted TLS certificate authorities')
+
     from config import PLANET_REPLICA_URL
     from db import close_database, connection, open_database
     from services.state_service import StateService

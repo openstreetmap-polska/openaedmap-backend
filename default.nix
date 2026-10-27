@@ -112,6 +112,7 @@ dockerTools.streamLayeredImage {
       "PYTHONPATH=${python-venv}/lib"
       "PYTHONUNBUFFERED=1"
       "PYTHONDONTWRITEBYTECODE=1"
+      "SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt"
       "SENTRY_RELEASE=${release}"
     ];
     Volumes = {
