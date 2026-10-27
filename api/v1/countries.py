@@ -3,8 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path
 
+from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import cache_control
-from middlewares.skip_serialization import skip_serialization
 from services.country_service import CountryService
 from services.export_service import GeoJSONResponse
 
@@ -13,10 +13,9 @@ router = APIRouter(prefix='/countries')
 
 @router.get('/names')
 @cache_control(timedelta(hours=1), stale=timedelta(days=7))
-@skip_serialization()
 async def get_names(language: str | None = None):
     countries = await CountryService.get_names()
-    return [
+    return JSONResponseUTF8([
         {
             'country_code': country.code,
             'country_names': (
@@ -26,7 +25,7 @@ async def get_names(language: str | None = None):
             'data_path': f'/api/v1/countries/{country.code}.geojson',
         }
         for country in countries
-    ]
+    ])
 
 
 @router.get('/{country_code}.geojson')

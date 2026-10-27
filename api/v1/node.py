@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Response
 from tzfpy import get_tz
 
+from json_response import JSONResponseUTF8
 from middlewares.cache_control_middleware import cache_control
-from middlewares.skip_serialization import skip_serialization
 from services.aed_service import AEDService
 from services.photo_service import PhotoService
 from utils import get_wikimedia_commons_url
@@ -85,7 +85,6 @@ async def _get_image_data(tags: dict[str, str]) -> dict:
 
 @router.get('/node/{node_id}')
 @cache_control(timedelta(minutes=1), stale=timedelta(minutes=5))
-@skip_serialization()
 async def get_node(node_id: int):
     aed = await AEDService.get_by_id(node_id)
     if aed is None:
@@ -100,7 +99,7 @@ async def get_node(node_id: int):
         '@timezone_offset': timezone_offset,
     }
 
-    return {
+    return JSONResponseUTF8({
         'version': 0.6,
         'copyright': 'OpenStreetMap and contributors',
         'attribution': 'https://www.openstreetmap.org/copyright',
@@ -117,4 +116,4 @@ async def get_node(node_id: int):
                 'version': aed.version,
             }
         ],
-    }
+    })
