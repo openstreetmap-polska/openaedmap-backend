@@ -30,6 +30,7 @@ jobs:
       cancel-in-progress: true
 
     env:
+      NIX_BUILD_SHELL: /bin/bash
       SENTRY_RELEASE: ${{ github.sha }}
       TAG: ${{ inputs.tag || 'dev' }}
       UV_LOCKED: "true"
